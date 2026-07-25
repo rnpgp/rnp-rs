@@ -171,7 +171,7 @@ unsafe extern "C" fn password_thunk(
             return false;
         }
         // SAFETY: buf is buf_len bytes, we just verified there's room.
-        std::ptr::copy_nonoverlapping(bytes.as_ptr() as *const u8, buf as *mut u8, bytes.len());
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf as *mut u8, bytes.len());
         *buf.add(bytes.len()) = 0;
         true
     }

@@ -83,11 +83,31 @@ fn main() {
     // -Wno-deprecated-declarations: rnp_enable_debug/rnp_disable_debug are
     // marked RNP_DEPRECATED; bindgen emits these as warnings which can break
     // the build under -Werror-equivalent defaults.
-    let bindings = bindgen::Builder::default()
+    //
+    // Feature-gated macros:
+    //   pqc             -> -DRNP_EXPERIMENTAL_PQC
+    //   crypto-refresh  -> -DRNP_EXPERIMENTAL_CRYPTO_REFRESH
+    // Each requires the linked librnp to have been built with the matching
+    // ENABLE_* CMake option ON; otherwise the symbols exist in the header
+    // but not in the .dylib/.so, leading to link errors at runtime.
+    let mut builder = bindgen::Builder::default()
         .header("wrapper.h")
         .clang_arg(format!("-I{}", rnp_include_dir.display()))
         .clang_arg("-DRNP_USE_64BIT_STRICT")
-        .clang_arg("-Wno-deprecated-declarations")
+        .clang_arg("-Wno-deprecated-declarations");
+
+    let pqc_on = cfg!(feature = "pqc");
+    let crypto_refresh_on = cfg!(feature = "crypto-refresh");
+    if pqc_on {
+        println!("cargo:warning=rnp-rs: building with RNP_EXPERIMENTAL_PQC — requires librnp built with ENABLE_PQC=ON");
+        builder = builder.clang_arg("-DRNP_EXPERIMENTAL_PQC");
+    }
+    if crypto_refresh_on {
+        println!("cargo:warning=rnp-rs: building with RNP_EXPERIMENTAL_CRYPTO_REFRESH — requires librnp built with ENABLE_CRYPTO_REFRESH=ON");
+        builder = builder.clang_arg("-DRNP_EXPERIMENTAL_CRYPTO_REFRESH");
+    }
+
+    let bindings = builder
         .allowlist_function("rnp_.*")
         .allowlist_type("rnp_.*")
         .allowlist_var("RNP_.*")
@@ -104,7 +124,34 @@ fn main() {
 
     // --- Link against librnp ----------------------------------------------
     //
-    // TODO: when the `vendored` feature is enabled, build librnp from a git
-    // submodule here instead of linking the system library.
+    // Vendored path: build librnp from `vendor/rnp/` via cmake. See
+    // TODO.roadmap/10-vendored-build.md. The full submodule build requires
+    // the submodule to be initialized and Botan/JSON-C/zlib present;
+    // this scaffold wires the build path but cannot run a full vendored
+    // build without those prerequisites.
+    #[cfg(feature = "vendored")]
+    {
+        // Scaffolding only. To complete:
+        //   1. Add `cmake` as a build-dependency.
+        //   2. Add `rnp` C++ source as a git submodule under `vendor/rnp/`.
+        //   3. Run cmake::Config::new("vendor/rnp")
+        //          .define("CRYPTO_BACKEND", "botan")
+        //          .define("BUILD_SHARED_LIBS", "OFF")
+        //          .define("BUILD_TESTING", "OFF")
+        //          .build();
+        //   4. Link the resulting librnp.a + its transitive deps.
+        // Until then, fall through to the system-link path so the build
+        // still works for consumers who don't enable `vendored`.
+        println!("cargo:warning=rnp-rs: --features vendored is currently a stub; falling back to system librnp. See TODO.roadmap/10-vendored-build.md.");
+    }
+
     println!("cargo:rustc-link-lib=dylib=rnp");
+
+    // Surface feature flags to the crate via cfg.
+    if pqc_on {
+        println!("cargo:rustc-cfg=feature_pqc");
+    }
+    if crypto_refresh_on {
+        println!("cargo:rustc-cfg=feature_crypto_refresh");
+    }
 }

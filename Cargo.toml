@@ -16,10 +16,19 @@ bindgen = "0.72"
 
 [features]
 default = []
-# TODO: `vendored` feature — build librnp from a vendored git submodule of the
-# `rnp` C++ project at build time. Not yet implemented; the binding currently
-# links against a system-installed librnp.
+# Build librnp from a vendored git submodule of the `rnp` C++ project. See
+# TODO.roadmap/10-vendored-build.md. Scaffolding only — full submodule build
+# requires the submodule to be initialized and Botan/JSON-C/zlib available.
 vendored = []
+# Pass -DRNP_EXPERIMENTAL_PQC to bindgen so the PQC algorithm constants and
+# `rnp_op_encrypt_prefer_pqc_enc_subkey` are picked up. Requires the linked
+# librnp to have been built with ENABLE_PQC=ON (Botan 3 + ENABLE_PQC).
+pqc = []
+# Pass -DRNP_EXPERIMENTAL_CRYPTO_REFRESH to bindgen so v6 keys
+# (`rnp_op_generate_set_v6_key`), crypto-refresh algorithm names, and
+# enable_pkesk_v6 / enable_skesk_v6 are exposed. Requires the linked
+# librnp to have been built with ENABLE_CRYPTO_REFRESH=ON.
+crypto-refresh = []
 
 [lib]
 # The bindgen-generated FFI bindings carry the upstream C API doc comments,
