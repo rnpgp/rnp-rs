@@ -164,12 +164,16 @@ Status snapshot (full detail in the per-phase TODO files):
   dumps + per-object JSON.
 - **Phase 08 — Security profile & misc.** Done. Security rules, feature
   queries, version helpers, `calculate_iterations`, `request_password`.
-- **Phase 09 — PQC.** Done (feature-gated, runtime-probed, **tested against
-  a real PQC-enabled librnp build**). `pqc` + `crypto-refresh` Cargo
-  features gate the PQC algorithm enum, `Encryptor::prefer_pqc_enc_
-  subkey`, and v6 PKESK/SKESK. Runtime probe via `librnp_supports_pqc()`.
-  Round-trip tests in `tests/pqc.rs` cover ML-DSA signing and ML-KEM
-  encryption against a Botan-3.6 + librnp build with `ENABLE_PQC=ON`.
+- **Phase 09 — PQC.** Done (feature-gated, runtime-probed, **tested against a
+  real PQC-enabled librnp build — 49 tests pass under `--features pqc,
+  crypto-refresh`**). `pqc` + `crypto-refresh` Cargo features gate the PQC
+  algorithm enum, `Encryptor::prefer_pqc_enc_subkey`, and v6 PKESK/SKESK.
+  Runtime probe via `librnp_supports_pqc()`. Round-trip tests in
+  `tests/pqc.rs` cover ML-DSA signing and ML-KEM encryption. **Caveat: the
+  PQC test Botan must be built with Xcode clang (`/usr/bin/clang++`); Homebrew
+  LLVM 22 miscompiles `calc_sig_words` at -O3 on ARM64, breaking all
+  BigInt operations.** See `TODO.roadmap/09-pqc.md` for the exact build
+  commands.
 - **Phase 10 — Vendored build.** Done. `vendored` Cargo feature drives a
   real CMake build of librnp from `vendor/rnp/` (git submodule pinned to
   v0.18.1). Statically links `librnp.a` + `libsexpp.a` plus the system

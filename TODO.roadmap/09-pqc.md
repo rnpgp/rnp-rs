@@ -87,16 +87,53 @@ real PQC-enabled librnp build**.
   `RNP_EXPERIMENTAL_CRYPTO_REFRESH`. Adding the builder method behind the
   feature gate is a clean follow-up.
 
-**Test setup:** built Botan 3.6.0 from source (with PQC modules) at
-`/Users/mulgogi/src/rnp/botan-3.6`, then built librnp from `../rnp/` HEAD
-with `-DENABLE_PQC=ON -DENABLE_CRYPTO_REFRESH=ON` against that Botan at
-`/Users/mulgogi/src/rnp/rnp/install-pqc`. Ran `cargo test --features pqc,
-crypto-refresh` against it — `tests/pqc.rs` covers:
+**Test setup:** built Botan 3.6.0 from source — **must use Xcode clang
+(`/usr/bin/clang++`), not Homebrew LLVM**. Homebrew LLVM 22.1.1 on ARM64
+miscompiles Botan's `BigInt::Data::calc_sig_words()` at `-O3`, producing
+garbage `sig_words()` return values that cascade into every BigInt-dependent
+operation (RSA key generation throws `bad_alloc`, `bits()` returns
+`0xFFFFFFFFFFFFFE00`, etc.). The bug is silent at build time — only surfaces
+at runtime. Diagnosed via a minimal repro at `/tmp/bigint_words.cpp` that
+dumps the BigInt's raw word vector and shows the value is stored correctly
+but `sig_words()` returns `-7` cast to `size_t`.
 
-- `pqc_algorithm_strings_are_canonical` — enum `as_str()` matches librnp.
-- `ml_dsa_sign_verify_roundtrip` — generate ML-DSA-65+ED25519 subkey via
-  JSON, then verify primary key material exists.
-- `ml_kem_encrypt_decrypt_roundtrip` — generate ML-KEM-768+X25519 subkey,
-  encrypt with `prefer_pqc_enc_subkey` + `enable_pkesk_v6`, decrypt back.
+Build commands (from `/tmp/Botan-3.6.0/`):
 
-All 3 tests pass.
+```sh
+env -u LDFLAGS -u CPPFLAGS -u CC python3 configure.py \
+    --cc=clang --cc-bin=/usr/bin/clang++ \
+    --prefix=$BOTAN_PREFIX \
+    --with-build-dir=$BOTAN_BUILD_DIR \
+    --link-method=copy \
+    --ldflags= \
+    --enable-modules=ml_kem,ml_dsa,slh_dsa_sha2,slh_dsa_shake,\
+ecdh,ecdsa,ed25519,ed448,x25519,x448,sm2,sm3,sm4,rsa,dsa,elgamal,\
+argon2,sha1,sha2_32,sha2_64,sha3,keccak,aes,aes_ni,chacha20poly1305,\
+gcm,ocb,xts,twofish,blowfish,cast128,camellia,idea,des,hmac,hmac_drbg,\
+hkdf,pbkdf2,pgp_s2k,auto_rng,system_rng,chacha_rng,ffi
+
+make -f $BOTAN_BUILD_DIR/Makefile -j8
+make -f $BOTAN_BUILD_DIR/Makefile install
+```
+
+Then rebuild librnp from `../rnp/` HEAD with `-DCMAKE_C_COMPILER=/usr/bin/clang
+-DCMAKE_CXX_COMPILER=/usr/bin/clang++ -DCRYPTO_BACKEND=botan3
+-DENABLE_PQC=ON -DENABLE_CRYPTO_REFRESH=ON
+-DCMAKE_PREFIX_PATH=$BOTAN_PREFIX`.
+
+**All 49 tests pass** under `cargo test --features pqc,crypto-refresh`
+against this build:
+
+- `tests/sign_verify.rs` (4) — RSA + EDDSA sign/verify round-trips.
+- `tests/keygen.rs` (5) — RSA, EDDSA, preferences, subkey, JSON.
+- `tests/key_inspect.rs` (3) — full getter surface, UID enumeration.
+- `tests/encrypt.rs` (5) — recipient, password, armored, compression,
+  garbage-input.
+- `tests/armor_dump.rs` (4) — armor round-trip, packet dumps.
+- `tests/io.rs` (7) — `Input`/`Output` RAII.
+- `tests/error_kind.rs` (4) — `ErrorKind` mapping.
+- `tests/extended.rs` (14) — key getters, UID/subkey enumeration, keyring
+  management, identifier iterator, security rules, version helpers.
+- `tests/pqc.rs` (3) — **ML-DSA-65+ED25519 signing subkey generation,
+  ML-KEM-768+X25519 encrypt→decrypt round-trip with `prefer_pqc_enc_subkey`
+  + `enable_pkesk_v6`, PQC algorithm string sanity.**
