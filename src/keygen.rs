@@ -306,9 +306,35 @@ pub struct KeyBuilder {
     pref_ciphers: Vec<Cipher>,
     pref_compressions: Vec<Compression>,
     pref_keyserver: Option<String>,
-    // TODO(phase-09 or later): gate v6 behind a `crypto-refresh` Cargo feature
-    // that passes -DRNP_EXPERIMENTAL_CRYPTO_REFRESH to bindgen in build.rs,
-    // matching how PQC will be gated. For now v6 keys are not exposed.
+    protection: Option<ProtectConfig>,
+    request_password: bool,
+    #[cfg(feature = "crypto-refresh")]
+    v6: bool,
+}
+
+/// Protection configuration shared between `Key::protect` (phase 03) and
+/// `KeyBuilder::protection` (phase 12). One canonical type — adding a new
+/// field here updates both call sites. OCP via composition.
+#[derive(Default, Clone)]
+pub(crate) struct ProtectConfig {
+    pub password: Option<String>,
+    pub cipher: Option<Cipher>,
+    pub mode: Option<String>,
+    pub hash: Option<Hash>,
+    pub iterations: Option<usize>,
+}
+
+impl ProtectConfig {
+    /// Build from a user-supplied `ProtectOptions`.
+    pub(crate) fn from_options(opts: &crate::key::ProtectOptions) -> Self {
+        ProtectConfig {
+            password: opts.password.clone(),
+            cipher: opts.cipher,
+            mode: opts.mode.clone(),
+            hash: opts.hash,
+            iterations: opts.iterations,
+        }
+    }
 }
 
 impl KeyBuilder {
@@ -326,6 +352,10 @@ impl KeyBuilder {
             pref_ciphers: Vec::new(),
             pref_compressions: Vec::new(),
             pref_keyserver: None,
+            protection: None,
+            request_password: false,
+            #[cfg(feature = "crypto-refresh")]
+            v6: false,
         }
     }
 
@@ -381,6 +411,31 @@ impl KeyBuilder {
 
     pub fn pref_keyserver(mut self, s: impl Into<String>) -> Self {
         self.pref_keyserver = Some(s.into());
+        self
+    }
+
+    /// Apply protection (encryption of secret material) at generation
+    /// time. Takes the same [`ProtectOptions`] type used by
+    /// [`Key::protect`](crate::Key::protect) — single canonical config.
+    pub fn protection(mut self, opts: &crate::key::ProtectOptions) -> Self {
+        self.protection = Some(ProtectConfig::from_options(opts));
+        self
+    }
+
+    /// Have librnp ask the configured password provider for the protection
+    /// password at execution time (instead of supplying it inline via
+    /// [`Self::protection`]).
+    pub fn request_password(mut self) -> Self {
+        self.request_password = true;
+        self
+    }
+
+    /// Generate a v6 (RFC 9580) primary key instead of v4. Requires the
+    /// `crypto-refresh` Cargo feature and a librnp built with
+    /// `ENABLE_CRYPTO_REFRESH=ON`.
+    #[cfg(feature = "crypto-refresh")]
+    pub fn v6(mut self) -> Self {
+        self.v6 = true;
         self
     }
 
@@ -459,6 +514,46 @@ unsafe fn apply_setters(op: ffi::rnp_op_generate_t, b: &KeyBuilder) -> Result<()
             let c = CString::new(ks.as_str()).map_err(|_| error::Error::NulByte)?;
             check(ffi::rnp_op_generate_set_pref_keyserver(op, c.as_ptr()))?;
         }
+        if let Some(cfg) = &b.protection {
+            apply_protection(op, cfg)?;
+        }
+        if b.request_password {
+            check(ffi::rnp_op_generate_set_request_password(op, true))?;
+        }
+        #[cfg(feature = "crypto-refresh")]
+        if b.v6 {
+            check(ffi::rnp_op_generate_set_v6_key(op))?;
+        }
+        Ok(())
+    }
+}
+
+/// Apply a `ProtectConfig` to a `rnp_op_generate_t`. Shared by primary-key
+/// and subkey generation.
+unsafe fn apply_protection(op: ffi::rnp_op_generate_t, cfg: &ProtectConfig) -> Result<()> {
+    unsafe {
+        if let Some(pw) = &cfg.password {
+            let c = CString::new(pw.as_str()).map_err(|_| error::Error::NulByte)?;
+            check(ffi::rnp_op_generate_set_protection_password(op, c.as_ptr()))?;
+        }
+        if let Some(c2) = cfg.cipher {
+            let cs = CString::new(c2.as_str()).unwrap();
+            check(ffi::rnp_op_generate_set_protection_cipher(op, cs.as_ptr()))?;
+        }
+        if let Some(h) = cfg.hash {
+            let cs = CString::new(h.as_str()).unwrap();
+            check(ffi::rnp_op_generate_set_protection_hash(op, cs.as_ptr()))?;
+        }
+        if let Some(m) = &cfg.mode {
+            let cs = CString::new(m.as_str()).unwrap();
+            check(ffi::rnp_op_generate_set_protection_mode(op, cs.as_ptr()))?;
+        }
+        if let Some(it) = cfg.iterations {
+            check(ffi::rnp_op_generate_set_protection_iterations(
+                op,
+                it.try_into().unwrap_or(u32::MAX),
+            ))?;
+        }
         Ok(())
     }
 }
@@ -479,6 +574,8 @@ pub struct SubkeyBuilder {
     curve: Option<Curve>,
     expiration: Option<u32>,
     usages: Vec<KeyUsage>,
+    protection: Option<ProtectConfig>,
+    request_password: bool,
 }
 
 impl SubkeyBuilder {
@@ -491,6 +588,8 @@ impl SubkeyBuilder {
             curve: None,
             expiration: None,
             usages: Vec::new(),
+            protection: None,
+            request_password: false,
         }
     }
 
@@ -579,6 +678,12 @@ unsafe fn apply_subkey_setters(op: ffi::rnp_op_generate_t, b: &SubkeyBuilder) ->
         for u in &b.usages {
             let c = CString::new(u.as_str()).unwrap();
             check(ffi::rnp_op_generate_add_usage(op, c.as_ptr()))?;
+        }
+        if let Some(cfg) = &b.protection {
+            apply_protection(op, cfg)?;
+        }
+        if b.request_password {
+            check(ffi::rnp_op_generate_set_request_password(op, true))?;
         }
         Ok(())
     }

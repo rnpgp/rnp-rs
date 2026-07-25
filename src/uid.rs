@@ -104,6 +104,41 @@ impl<'key> Uid<'key> {
         unsafe { check(ffi::rnp_uid_get_signature_count(self.handle, &mut n))? };
         Ok(n)
     }
+
+    /// Borrow the signature at `idx` on this UID. Returned [`Signature`]
+    /// borrows `self`.
+    pub fn signature_at(&self, idx: usize) -> Result<Option<crate::Signature<'_>>> {
+        let mut handle: ffi::rnp_signature_handle_t = ptr::null_mut();
+        unsafe {
+            check(ffi::rnp_uid_get_signature_at(self.handle, idx, &mut handle))?;
+        }
+        if handle.is_null() {
+            Ok(None)
+        } else {
+            Ok(Some(crate::Signature::from_handle(handle)))
+        }
+    }
+
+    /// All signatures on this UID.
+    pub fn signatures(&self) -> Result<Vec<crate::Signature<'_>>> {
+        let n = self.signature_count()?;
+        (0..n)
+            .map(|i| self.signature_at(i)?.ok_or(error::Error::NullPointer))
+            .collect()
+    }
+
+    /// The UID's revocation signature, if the UID has been revoked.
+    pub fn revocation_signature(&self) -> Result<Option<crate::Signature<'_>>> {
+        let mut handle: ffi::rnp_signature_handle_t = ptr::null_mut();
+        unsafe {
+            check(ffi::rnp_uid_get_revocation_signature(self.handle, &mut handle))?;
+        }
+        if handle.is_null() {
+            Ok(None)
+        } else {
+            Ok(Some(crate::Signature::from_handle(handle)))
+        }
+    }
 }
 
 impl<'key> Drop for Uid<'key> {

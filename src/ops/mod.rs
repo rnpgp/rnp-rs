@@ -8,5 +8,6 @@
 pub mod io;
 
 pub use io::{
-    cstr_to_optional_string, cstr_to_string, ArmorType, Input, Output, OutputFileFlags,
+    call_for_optional_string, call_for_string, cstr_to_optional_string, cstr_to_string,
+    ArmorType, Input, Output, OutputFileFlags,
 };

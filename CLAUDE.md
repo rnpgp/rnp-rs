@@ -147,7 +147,8 @@ with priority, status, work items, architecture notes, and completion log.
 Status snapshot (full detail in the per-phase TODO files):
 
 - **Phase 01 — Foundations.** Done. `Input`/`Output` RAII, `ErrorKind`
-  categorized errors, shared `cstr_to_string` helper.
+  categorized errors, shared `cstr_to_string` helper, `call_for_string`
+  DRY helper.
 - **Phase 02 — Key inspection.** Done. Scalar getters + `Uid` + `Subkey`
   + `Signature` + `Subpacket` + `IdentifierIterator`.
 - **Phase 03 — Key mutation.** Done. `protect`/`unprotect`/`lock`/`unlock`/
@@ -155,7 +156,8 @@ Status snapshot (full detail in the per-phase TODO files):
   `export_{revocation,autocrypt}` + 3 signature-creation builders sharing
   the `SignatureSetterOps` trait.
 - **Phase 04 — Key generation.** Done. `KeyBuilder` + `SubkeyBuilder` +
-  algorithm enums + JSON API. v6 keys gated behind `crypto-refresh` feature.
+  algorithm enums + JSON API + at-generation protection + v6 keys
+  (feature-gated).
 - **Phase 05 — Keyring management.** Done. `save_keys`/`unload_keys`/
   `import_keys`/`import_signatures`/homedir/counts/`IdentifierIterator`.
 - **Phase 06 — Encryption/decryption.** Done. `Encryptor` + `decrypt`
@@ -165,7 +167,7 @@ Status snapshot (full detail in the per-phase TODO files):
 - **Phase 08 — Security profile & misc.** Done. Security rules, feature
   queries, version helpers, `calculate_iterations`, `request_password`.
 - **Phase 09 — PQC.** Done (feature-gated, runtime-probed, **tested against a
-  real PQC-enabled librnp build — 49 tests pass under `--features pqc,
+  real PQC-enabled librnp build — 62 tests pass under `--features pqc,
   crypto-refresh`**). `pqc` + `crypto-refresh` Cargo features gate the PQC
   algorithm enum, `Encryptor::prefer_pqc_enc_subkey`, and v6 PKESK/SKESK.
   Runtime probe via `librnp_supports_pqc()`. Round-trip tests in
@@ -179,6 +181,25 @@ Status snapshot (full detail in the per-phase TODO files):
   v0.18.1). Statically links `librnp.a` + `libsexpp.a` plus the system
   Botan/JSON-C/zlib/bzip2 discovered at build time. All 46 default tests
   pass under `--features vendored`.
+- **Phase 11 — UID signatures.** Done. `Uid::signature_at/signatures/
+  revocation_signature`.
+- **Phase 12 — Keygen protection.** Done. `KeyBuilder::protection(
+  ProtectOptions)`, `request_password`, `v6` (feature-gated).
+- **Phase 13 — Signature lifecycle.** Done. `Signature::export/
+  remove_from_key/find_subpacket`, `SubpacketType` enum (21 variants +
+  `Other(u8)`, `#[non_exhaustive]`).
+- **Phase 14 — Verify result rich.** Done. `VerifySignature::handle()`,
+  `key()`, `keyid()` (real impl).
+- **Phase 15 — Logging & key provider.** Done. `logging` Cargo feature
+  with `Context::set_log_fd`/`set_log_file`. `KeyProvider` trait + thunk
+  with borrowed-context re-entrancy (`Context::borrow_ffi`).
+- **Phase 16 — Buffer hygiene.** Done. `SecretString` with zero-on-drop
+  via `rnp_buffer_clear`. `request_password` returns `SecretString`.
+- **Phase 17 — Misc getters.** Done. `Key::default_key_for(usage)`,
+  `Signature::signer_key()`.
+- **Phase 18 — Architectural cleanup.** Partial. `call_for_string` /
+  `call_for_optional_string` helpers added and used in new code; legacy
+  call sites pending a focused refactor.
 
 Each phase should land as its own focused PR (or set of PRs) with
 round-trip integration tests modeled on the existing files in `tests/`.

@@ -56,6 +56,47 @@ pub unsafe fn cstr_to_string(raw: *mut c_char) -> Result<String> {
     unsafe { cstr_to_optional_string(raw) }.ok_or(error::Error::NullPointer)
 }
 
+/// Run an FFI getter that writes a NUL-terminated string into an out-param,
+/// then convert the result to an owned [`String`] and free the buffer.
+///
+/// This is the canonical wrapper for the very common C-API shape
+/// `rnp_X_get_Y(handle, *mut *mut c_char) -> rnp_result_t`. Use it instead
+/// of repeating the `let mut raw: *mut c_char = ptr::null_mut(); check(...)?;
+/// cstr_to_string(raw)` triplet at every call site.
+///
+/// # Safety
+///
+/// `f` must populate the out-pointer with a librnp-allocated buffer that
+/// `rnp_buffer_destroy` can free.
+pub fn call_for_string<F>(mut f: F) -> Result<String>
+where
+    F: FnMut(*mut *mut c_char) -> u32,
+{
+    let mut raw: *mut c_char = ptr::null_mut();
+    let code = f(&mut raw);
+    check(code)?;
+    // SAFETY: the caller's closure populates `raw` per the FFI contract;
+    // cstr_to_string frees it via rnp_buffer_destroy.
+    unsafe { cstr_to_string(raw) }
+}
+
+/// Like [`call_for_string`] but maps `RNP_ERROR_NOT_FOUND` (and a null
+/// out-pointer) to `Ok(None)`. Use for getters that legitimately return
+/// "no value" rather than treating it as an error.
+pub fn call_for_optional_string<F>(mut f: F) -> Result<Option<String>>
+where
+    F: FnMut(*mut *mut c_char) -> u32,
+{
+    let mut raw: *mut c_char = ptr::null_mut();
+    let code = f(&mut raw);
+    if code == error::NOT_FOUND {
+        return Ok(None);
+    }
+    check(code)?;
+    // SAFETY: as above.
+    Ok(unsafe { cstr_to_optional_string(raw) })
+}
+
 // ---------------------------------------------------------------------------
 // Input
 // ---------------------------------------------------------------------------

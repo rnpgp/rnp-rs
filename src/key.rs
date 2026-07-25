@@ -656,6 +656,26 @@ impl<'ctx> Key<'ctx> {
 
     // --- JSON ------------------------------------------------------------
 
+    /// Find the default subkey for a given usage. Returns `None` if no
+    /// subkey is suitable. Wraps `rnp_key_get_default_key`.
+    pub fn default_key_for(&self, usage: crate::keygen::KeyUsage) -> Result<Option<Key<'_>>> {
+        let usage_c = CString::new(usage.as_str()).unwrap();
+        let mut handle: ffi::rnp_key_handle_t = ptr::null_mut();
+        unsafe {
+            check(ffi::rnp_key_get_default_key(
+                self.handle,
+                usage_c.as_ptr(),
+                0,
+                &mut handle,
+            ))?;
+        }
+        if handle.is_null() {
+            Ok(None)
+        } else {
+            Ok(Some(Key::from_handle(handle)))
+        }
+    }
+
     pub fn to_json(&self, flags: crate::dump::JsonFlags) -> Result<String> {
         let mut raw: *mut c_char = ptr::null_mut();
         unsafe {

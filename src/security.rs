@@ -237,11 +237,15 @@ pub fn calculate_iterations(hash: crate::keygen::Hash, memory: usize) -> Result<
 /// Manually request a password from the configured password provider on
 /// `ctx`. `key` is the key the password is for (or `None`). `context_str`
 /// is the why (e.g. `"sign"`, `"decrypt"`).
+///
+/// The returned [`SecretString`] zeroises its bytes on drop — callers who
+/// need a plain `String` can use [`SecretString::into_string`], but should
+/// prefer keeping the secret scoped.
 pub fn request_password(
     ctx: &Context,
     key: Option<&crate::Key<'_>>,
     context_str: &str,
-) -> Result<Option<String>> {
+) -> Result<Option<crate::SecretString>> {
     let key_handle = key.map(|k| k.handle).unwrap_or(ptr::null_mut());
     let ctx_c = CString::new(context_str).map_err(|_| error::Error::NulByte)?;
     let mut raw: *mut c_char = ptr::null_mut();
@@ -255,6 +259,7 @@ pub fn request_password(
         if raw.is_null() {
             return Ok(None);
         }
-        Ok(crate::ops::cstr_to_optional_string(raw))
+        let s = crate::ops::cstr_to_optional_string(raw).unwrap_or_default();
+        Ok(Some(crate::SecretString::new(s)))
     }
 }

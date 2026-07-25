@@ -18,8 +18,7 @@ cmake = "0.1"
 [features]
 default = []
 # Build librnp from a vendored git submodule of the `rnp` C++ project. See
-# TODO.roadmap/10-vendored-build.md. Scaffolding only — full submodule build
-# requires the submodule to be initialized and Botan/JSON-C/zlib available.
+# TODO.roadmap/10-vendored-build.md.
 vendored = []
 # Pass -DRNP_EXPERIMENTAL_PQC to bindgen so the PQC algorithm constants and
 # `rnp_op_encrypt_prefer_pqc_enc_subkey` are picked up. Requires the linked
@@ -30,6 +29,10 @@ pqc = []
 # enable_pkesk_v6 / enable_skesk_v6 are exposed. Requires the linked
 # librnp to have been built with ENABLE_CRYPTO_REFRESH=ON.
 crypto-refresh = []
+# Enable `Context::set_log_fd` / `set_log_file` for directing librnp's
+# diagnostic output to a file. Off by default because most consumers
+# don't need it.
+logging = []
 
 [lib]
 # The bindgen-generated FFI bindings carry the upstream C API doc comments,

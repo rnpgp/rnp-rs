@@ -353,11 +353,9 @@ impl VerifySignature {
 
     /// Hash algorithm used (e.g. `"SHA256"`).
     pub fn hash(&self) -> Result<String> {
-        let mut raw: *mut c_char = ptr::null_mut();
-        unsafe {
-            check(ffi::rnp_op_verify_signature_get_hash(self.handle, &mut raw))?;
-            cstr_to_string(raw)
-        }
+        crate::ops::call_for_string(|raw| unsafe {
+            ffi::rnp_op_verify_signature_get_hash(self.handle, raw)
+        })
     }
 
     /// Creation and expiration times of the signature.
@@ -374,14 +372,42 @@ impl VerifySignature {
         Ok((create, expires))
     }
 
-    /// Hex keyid of the signer.
+    /// The full [`Signature`] handle, for inspection of subpackets, key
+    /// flags, and other metadata. The returned handle borrows `self`.
+    pub fn handle(&self) -> Result<crate::Signature<'_>> {
+        let mut raw: ffi::rnp_signature_handle_t = ptr::null_mut();
+        unsafe {
+            check(ffi::rnp_op_verify_signature_get_handle(
+                self.handle,
+                &mut raw,
+            ))?;
+        }
+        if raw.is_null() {
+            return Err(error::Error::NullPointer);
+        }
+        Ok(crate::Signature::from_handle(raw))
+    }
+
+    /// The signing key, when present in the keyring. Returns `None` if the
+    /// signer's key wasn't loaded. The returned [`Key`] borrows `self`.
+    pub fn key(&self) -> Result<Option<crate::Key<'_>>> {
+        let mut raw: ffi::rnp_key_handle_t = ptr::null_mut();
+        unsafe {
+            check(ffi::rnp_op_verify_signature_get_key(self.handle, &mut raw))?;
+        }
+        if raw.is_null() {
+            Ok(None)
+        } else {
+            Ok(Some(crate::Key::from_handle(raw)))
+        }
+    }
+
+    /// Hex keyid of the signer, drawn from the underlying signature
+    /// handle. Empty when the signer's key is unavailable and the
+    /// signature itself doesn't carry a keyid.
     pub fn keyid(&self) -> Result<String> {
-        // The verify-signature handle doesn't directly expose keyid; the
-        // caller should use `key()` and inspect the returned Key instead.
-        // For now we return an empty string as a placeholder.
-        // TODO: revisit when the C side exposes keyid on
-        // rnp_op_verify_signature_t directly.
-        Ok(String::new())
+        let sig = self.handle()?;
+        sig.keyid()
     }
 }
 
