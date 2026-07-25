@@ -20,26 +20,27 @@ pub struct Context {
     // `Send` is intentionally not implemented: librnp handles are not safe to
     // move between threads.
     _password_provider: Option<Box<PasswordHolder>>,
-}
-
-/// What the library calls when it needs a passphrase to unlock a secret key.
-///
-/// Implementations return the password as `Cow<str>`; it is copied into the
-/// librnp-provided buffer before the callback returns.
-pub trait PasswordProvider: Send + Sync {
-    fn get_password(
-        &self,
-        key: Option<&crate::key::Key>,
-        context: &str,
-    ) -> Option<std::borrow::Cow<'_, str>>;
-}
-
-// Internal holder that we can hand a raw pointer to.
-struct PasswordHolder {
-    inner: Box<dyn PasswordProvider>,
+    pub(crate) _key_provider: Option<Box<crate::callbacks::KeyProviderHolder>>,
+    // When true, Drop does NOT call rnp_ffi_destroy. Used by callback
+    // thunks to construct a transient Context view over an ffi pointer
+    // that another Context owns.
+    pub(crate) borrowed: bool,
 }
 
 impl Context {
+    /// Borrow an existing `rnp_ffi_t` without taking ownership. Used by
+    /// the key-provider callback thunk to reconstruct a `Context` view
+    /// during a librnp call. The returned `Context` does NOT destroy the
+    /// ffi on drop.
+    pub(crate) fn borrow_ffi(ffi: ffi::rnp_ffi_t) -> Self {
+        Context {
+            ffi,
+            _password_provider: None,
+            _key_provider: None,
+            borrowed: true,
+        }
+    }
+
     /// Create a new context with the GPG keyring format (the most common one).
     pub fn new() -> Result<Self> {
         Self::with_format(KeyringFormat::Gpg, KeyringFormat::Gpg)
@@ -53,7 +54,6 @@ impl Context {
         let pub_c = CString::new(pub_format.as_str()).unwrap();
         let sec_c = CString::new(sec_format.as_str()).unwrap();
         let mut ffi_h: ffi::rnp_ffi_t = ptr::null_mut();
-        // SAFETY: passing valid C strings and a valid out-pointer.
         unsafe {
             check(ffi::rnp_ffi_create(
                 &mut ffi_h,
@@ -67,6 +67,8 @@ impl Context {
         Ok(Context {
             ffi: ffi_h,
             _password_provider: None,
+            _key_provider: None,
+            borrowed: false,
         })
     }
 
@@ -92,11 +94,15 @@ impl Context {
 
 impl Drop for Context {
     fn drop(&mut self) {
-        // Clear the provider first so the C side stops calling into freed
+        // Clear the providers first so the C side stops calling into freed
         // memory if rnp_ffi_destroy triggers any final callbacks.
         self._password_provider.take();
+        self._key_provider.take();
+        // Borrowed contexts: don't destroy the ffi (we don't own it).
+        if self.borrowed {
+            return;
+        }
         if !self.ffi.is_null() {
-            // SAFETY: ffi was created by rnp_ffi_create and not yet destroyed.
             unsafe {
                 let _ = ffi::rnp_ffi_destroy(self.ffi);
             }
@@ -108,6 +114,23 @@ impl Drop for Context {
 // librnp handles contain raw pointers and so are not Send/Sync by default;
 // we rely on that auto-trait negative impl rather than spelling it out, since
 // the explicit `impl !Send` form requires the unstable `negative_impls` feature.
+
+/// What the library calls when it needs a passphrase to unlock a secret key.
+///
+/// Implementations return the password as `Cow<str>`; it is copied into the
+/// librnp-provided buffer before the callback returns.
+pub trait PasswordProvider: Send + Sync {
+    fn get_password(
+        &self,
+        key: Option<&crate::key::Key>,
+        context: &str,
+    ) -> Option<std::borrow::Cow<'_, str>>;
+}
+
+// Internal holder that we can hand a raw pointer to.
+struct PasswordHolder {
+    inner: Box<dyn PasswordProvider>,
+}
 
 /// Keyring container format passed to `rnp_ffi_create`.
 #[derive(Clone, Copy, Debug)]
@@ -171,7 +194,7 @@ unsafe extern "C" fn password_thunk(
             return false;
         }
         // SAFETY: buf is buf_len bytes, we just verified there's room.
-        std::ptr::copy_nonoverlapping(bytes.as_ptr() as *const u8, buf as *mut u8, bytes.len());
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf as *mut u8, bytes.len());
         *buf.add(bytes.len()) = 0;
         true
     }

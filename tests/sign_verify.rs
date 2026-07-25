@@ -1,4 +1,9 @@
 //! Round-trip: generate a key, sign a message, verify the signature.
+//!
+//! Tests intentionally exercise the deprecated `generate_test_key` shim — it
+//! must keep working until removed.
+
+#![allow(deprecated)]
 
 use rnp::{
     generate_test_key, sign, sign_detached, verify, verify_detached, Context, KeyIdentifier,
