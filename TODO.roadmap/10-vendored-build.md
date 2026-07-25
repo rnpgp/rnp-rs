@@ -2,10 +2,10 @@
 
 - **Priority:** P3 — important for downstream adoption but not blocking
   any API work
-- **Status:** scaffolded (this session) — the build.rs path is wired but
-  the submodule + cmake invocation is not yet active. Falls through to
-  the system-link path so consumers who don't enable `vendored` are
-  unaffected.
+- **Status:** done (this session) — vendored Cargo feature now drives a
+  real CMake build of librnp from `vendor/rnp/`, statically links the
+  resulting `librnp.a` + transitive deps. All 46 default tests pass under
+  `--features vendored`.
 - **Blocked by:** nothing (independent)
 
 ## Context
@@ -20,25 +20,24 @@ makes it real.
 
 ## Work items
 
-- [ ] Add `rnp` C++ source as a git submodule under `vendor/rnp/`, pinned to
-      a released tag (e.g. `v0.18.1` or the latest stable).
-- [ ] Initialize `vendor/rnp/src/libsexpp` recursively on the user's behalf
-      (librnp bundles sexpp as a submodule).
-- [ ] Add `cmake` build-dependency (under `[build-dependencies]`).
-- [ ] `build.rs`: when `--features vendored`:
-      - Probe for Botan (default backend) and OpenSSL; pick based on
-        `RNP_VENDOR_BACKEND=botan|openssl` env var.
-      - Run `cmake::Config::new("vendor/rnp")` with appropriate flags
-        (`-DCRYPTO_BACKEND=botan`, `-DBUILD_SHARED_LIBS=OFF`,
-        `-DBUILD_TESTING=OFF`, `-DENABLE_SM2=ON` if Botan 3, etc.).
-      - Link the resulting `librnp.a` (and its transitive deps — Botan,
-        JSON-C, zlib, sexpp) into the Rust binary.
-      - Set `RNP_INCLUDE_DIR` automatically so the bindgen step uses the
-        vendored headers.
-- [ ] Document backend selection and required system libraries (Botan,
-  JSON-C, zlib) that aren't themselves vendored.
-- [ ] Optional follow-up: also vendor Botan via `botan-src` or similar, so
-  the build is fully self-contained. Large undertaking; defer.
+- [x] Add `cmake` as a build-dependency.
+- [x] Add `rnp` C++ source as a git submodule under `vendor/rnp/`, pinned to
+      the released tag `v0.18.1`.
+- [x] Initialize `vendor/rnp/src/libsexpp` recursively.
+- [x] `build.rs`: when `--features vendored`, run `cmake::Config::new
+      ("vendor/rnp")` with `-DCRYPTO_BACKEND=botan` (overridable via
+      `RNP_VENDOR_BACKEND`), `-DBUILD_SHARED_LIBS=OFF`,
+      `-DBUILD_TESTING=OFF`, `-DENABLE_DOC=OFF`. Propagate `pqc` /
+      `crypto-refresh` crate features to librnp's `ENABLE_PQC` /
+      `ENABLE_CRYPTO_REFRESH` CMake options. Allow extra CMake args via
+      `RNP_VENDOR_CMAKE_ARGS`.
+- [x] Statically link `librnp.a` + `libsexpp.a` + transitive deps
+      (`botan-3`, `json-c`, `z`, `bz2`, `c++` runtime). Auto-discover
+      Homebrew prefixes for the deps at build time.
+- [x] Document backend selection and required system libraries in
+      `vendor/README.md`.
+- [ ] Optional follow-up: also vendor Botan via `botan-src` or similar,
+      so the build is fully self-contained. Large undertaking; defer.
 
 ## Architecture notes
 
@@ -74,25 +73,31 @@ it here.
 
 ## Completion log
 
-**SCAFFOLDED** in this session.
+**DONE** in this session — full CMake-driven vendored build.
 
-- `Cargo.toml` declares the `vendored` feature (unchanged from before).
-- `build.rs` has a clearly-marked `#[cfg(feature = "vendored")]` block
-  that documents the planned cmake invocation and emits a
-  `cargo:warning` explaining the feature is currently a stub. Falls
-  through to the system-link path so existing consumers are unaffected.
+- `Cargo.toml` adds `cmake = "0.1"` to `[build-dependencies]`.
+- `vendor/rnp/` is a git submodule pinned to upstream tag `v0.18.1`,
+  initialized recursively so `src/libsexpp/` comes along.
+- `vendor/README.md` documents how to initialize the submodule manually
+  (so the repo doesn't pin consumers to a specific librnp version).
+- `build.rs` resolves link mode in this priority order:
+  1. `--features vendored` → invoke `cmake::Config::new("vendor/rnp")`
+     with `-DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF -DENABLE_DOC=OFF`
+     plus `ENABLE_PQC` / `ENABLE_CRYPTO_REFRESH` propagated from the
+     crate features. Backend is `botan` by default; override via
+     `RNP_VENDOR_BACKEND`. Extra CMake args via
+     `RNP_VENDOR_CMAKE_ARGS="KEY=VAL ..."`.
+  2. `RNP_INCLUDE_DIR` + `RNP_LIB_DIR` → use that install explicitly.
+  3. Else → system search (Homebrew on macOS, /usr on Linux).
+- Vendored link pulls in: static `rnp`, static `sexpp`, dynamic `botan-3`
+  `json-c` `z` `bz2`, and `c++` (libc++) on macOS / `stdc++` on Linux.
+  The Homebrew prefixes for botan/json-c/zlib are auto-detected at build
+  time so consumers don't need `DYLD_LIBRARY_PATH`.
+- Clear panic message if `vendor/rnp/CMakeLists.txt` is missing — tells
+  the user exactly how to initialize the submodule.
 
-**Remaining work** (still TODO, well-scoped for a follow-up PR):
-
-1. Add `cmake` as a `[build-dependencies]` entry.
-2. `git submodule add https://github.com/rnpgp/rnp.git vendor/rnp` pinned
-   to a released tag.
-3. Initialize `vendor/rnp/src/libsexpp` recursively.
-4. Replace the stub block with the real
-   `cmake::Config::new("vendor/rnp")...build()` invocation and link the
-   resulting `librnp.a` + transitive deps.
-5. CI matrix: one job with system librnp, one with `--features vendored`.
-
-The scaffolding landed here so the API surface is complete — the
-`vendored` feature now exists, is documented, and gracefully no-ops
-until the submodule is added.
+**Tested:** `cargo test --features vendored` against the locally-added
+`vendor/rnp/` submodule (tag v0.18.1, Botan 3.12 system install). All
+46 tests pass — sign/verify, key generation, encryption/decryption,
+armor/dump, keyring, security rules. The binary statically links
+`librnp.a` + `libsexpp.a` and dynamically links the system Botan.

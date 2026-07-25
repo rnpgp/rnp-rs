@@ -67,7 +67,8 @@ appears) one Encryptor method. No existing call site changes.
 
 ## Completion log
 
-**DONE** in this session — feature-gated, runtime-probed.
+**DONE** in this session — feature-gated, runtime-probed, **tested against a
+real PQC-enabled librnp build**.
 
 - `pqc` and `crypto-refresh` Cargo features in `Cargo.toml`.
 - `build.rs` passes `-DRNP_EXPERIMENTAL_PQC` and/or
@@ -81,12 +82,21 @@ appears) one Encryptor method. No existing call site changes.
 - `Encryptor::prefer_pqc_enc_subkey` under `#[cfg(feature = "pqc")]`.
 - `Encryptor::enable_pkesk_v6` and `enable_skesk_v6` under
   `#[cfg(feature = "crypto-refresh")]`.
-- `KeyBuilder::v6_key()` was *not* added in this session — the underlying
+- `KeyBuilder::v6_key()` was *not* added — the underlying
   `rnp_op_generate_set_v6_key` symbol is gated by
   `RNP_EXPERIMENTAL_CRYPTO_REFRESH`. Adding the builder method behind the
   feature gate is a clean follow-up.
 
-**Not tested in this session** because the installed librnp (Homebrew
-0.18.1) wasn't built with `ENABLE_PQC=ON` / `ENABLE_CRYPTO_REFRESH=ON`.
-Once a PQC-enabled librnp is available locally, run
-`cargo test --features pqc,crypto-refresh` to exercise the round-trips.
+**Test setup:** built Botan 3.6.0 from source (with PQC modules) at
+`/Users/mulgogi/src/rnp/botan-3.6`, then built librnp from `../rnp/` HEAD
+with `-DENABLE_PQC=ON -DENABLE_CRYPTO_REFRESH=ON` against that Botan at
+`/Users/mulgogi/src/rnp/rnp/install-pqc`. Ran `cargo test --features pqc,
+crypto-refresh` against it — `tests/pqc.rs` covers:
+
+- `pqc_algorithm_strings_are_canonical` — enum `as_str()` matches librnp.
+- `ml_dsa_sign_verify_roundtrip` — generate ML-DSA-65+ED25519 subkey via
+  JSON, then verify primary key material exists.
+- `ml_kem_encrypt_decrypt_roundtrip` — generate ML-KEM-768+X25519 subkey,
+  encrypt with `prefer_pqc_enc_subkey` + `enable_pkesk_v6`, decrypt back.
+
+All 3 tests pass.

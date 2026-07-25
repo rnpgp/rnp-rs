@@ -13,6 +13,7 @@ snafu = "0.8"
 
 [build-dependencies]
 bindgen = "0.72"
+cmake = "0.1"
 
 [features]
 default = []

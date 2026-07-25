@@ -617,5 +617,7 @@ pub fn generate_test_key<'a>(ctx: &'a Context, userid: &str) -> Result<Key<'a>> 
         .bits(2048)
         .userid(userid)
         .hash(Hash::Sha256)
+        .add_usage(KeyUsage::Sign)
+        .add_usage(KeyUsage::Certify)
         .build(ctx)
 }
