@@ -1,0 +1,103 @@
+= rnp-rs
+:toc: macro
+:toclevels: 2
+:project-name: rnp-rs
+:project-repo: https://github.com/rnpgp/rnp-rs
+
+Idiomatic Rust binding to the
+link:https://github.com/rnpgp/rnp[RNP] OpenPGP (RFC 9580) C library.
+
+RNP is the C++ OpenPGP implementation that powers Mozilla Thunderbird. This
+crate provides a thin, safe Rust wrapper over its public C FFI (declared in
+`include/rnp/rnp.h`).
+
+== Status
+
+Early. The first milestone is **sign + verify**, which is what
+link:https://github.com/confium/confium[Confium] needs for plugin artifact
+verification.
+
+What works:
+
+* `Context` — wraps `rnp_ffi_t`, owns its lifetime, installs a
+  `PasswordProvider`.
+* `Key` — load keys from bytes, locate by userid/keyid/fingerprint/grip,
+  export, primary uid.
+* `key::generate_test_key` — generate an unprotected RSA signing key (for
+  tests).
+* `signature::sign` / `signature::sign_detached` — produce inline or detached
+  signatures.
+* `signature::verify` / `signature::verify_detached` — verify them, returning
+  `bool`.
+
+What is TODO (tracked inline as `// TODO:` comments):
+
+* Encryption / decryption.
+* Full key generation via the JSON API (`rnp_generate_key_json`).
+* Keyring save/load to/from disk, default-homedir discovery.
+* Armor / dearmor wrappers.
+* Identifier iteration, signature subpacket inspection, key revocation.
+* A `vendored` Cargo feature that builds librnp from a git submodule.
+
+== Linking
+
+`rnp-rs` links against a **system-installed** `librnp` (`-lrnp`).
+
+=== macOS (Homebrew)
+
+[source,sh]
+----
+brew install rnp
+----
+
+Homebrew installs headers under `/opt/homebrew/include/rnp/` and the library
+under `/opt/homebrew/lib/`. `rnp-rs`'s `build.rs` finds them automatically.
+
+=== Linux
+
+Use your distro's package, or build from source per the
+link:https://github.com/rnpgp/rnp/blob/main/docs/installation.adoc[RNP
+installation guide].
+
+[source,sh]
+----
+# Fedora
+sudo dnf install librnp-devel
+
+# Debian/Ubuntu (if packaged)
+sudo apt install librnp-dev
+----
+
+=== Building against a source checkout
+
+If you have built librnp from the `rnp` C++ source tree (e.g. at
+`~/src/rnp/rnp/build/`), point `rnp-rs` at the generated headers and library:
+
+[source,sh]
+----
+RNP_INCLUDE_DIR=/path/to/rnp/install/include \
+RNP_LIB_DIR=/path/to/rnp/install/lib \
+cargo build
+----
+
+== Quick start
+
+[source,rust]
+----
+use rnp::{generate_test_key, sign, verify, Context};
+
+let ctx = Context::new()?;
+let key = generate_test_key(&ctx, "alice <alice@example.com>")?;
+
+let message = b"hello, world";
+let signed = sign(&ctx, message, &key)?;
+assert!(verify(&ctx, &signed)?);
+# Ok::<(), rnp::Error>(())
+----
+
+See `tests/sign_verify.rs` for the full round-trip including detached
+signatures and tamper detection.
+
+== License
+
+BSD-2-Clause, matching the upstream RNP project. See `LICENSE.md`.

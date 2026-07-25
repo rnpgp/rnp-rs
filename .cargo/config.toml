@@ -1,0 +1,11 @@
+# Local cargo configuration for development of rnp-rs.
+#
+# On macOS with a Homebrew-installed librnp, the test binaries need to find
+# lib libnp.0.dylib at runtime. Homebrew's lib directory is not on the default
+# dyld search path, so we set DYLD_LIBRARY_PATH for `cargo test` / `cargo run`.
+#
+# Downstream consumers of the published crate are responsible for their own
+# link/runtime configuration (see README.adoc).
+
+[target.'cfg(target_os = "macos")']
+rustflags = ["-C", "link-arg=-Wl,-rpath,/opt/homebrew/lib,-rpath,/usr/local/lib"]

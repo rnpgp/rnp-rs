@@ -1,0 +1,29 @@
+[package]
+name = "rnp"
+version = "0.1.0"
+edition = "2024"
+license = "BSD-2-Clause"
+description = "Idiomatic Rust binding to the RNP OpenPGP C FFI (librnp)"
+repository = "https://github.com/rnpgp/rnp-rs"
+keywords = ["openpgp", "pgp", "rnp", "crypto", "cryptography"]
+categories = ["api-bindings", "cryptography"]
+
+[dependencies]
+snafu = "0.8"
+
+[build-dependencies]
+bindgen = "0.72"
+
+[features]
+default = []
+# TODO: `vendored` feature — build librnp from a vendored git submodule of the
+# `rnp` C++ project at build time. Not yet implemented; the binding currently
+# links against a system-installed librnp.
+vendored = []
+
+[lib]
+# The bindgen-generated FFI bindings carry the upstream C API doc comments,
+# many of which contain fenced code blocks that the doctest harness tries to
+# compile as standalone programs. Those snippets are C/JSON, not Rust, so we
+# disable doctests on the crate.
+doctest = false
