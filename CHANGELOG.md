@@ -12,6 +12,10 @@ are the detailed audit trail for each feature area.
 
 ### Other
 
+- Add rnp-sexp 0.1 from crates.io as dev-dependency ([#19](https://github.com/rnpgp/rnp-rs/pull/19)) by @[object]
+
+### Other
+
 - Release v0.1.1 ([#13](https://github.com/rnpgp/rnp-rs/pull/13)) by @[object]
 
 ### Added
