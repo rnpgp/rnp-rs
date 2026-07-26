@@ -3,7 +3,7 @@ name: Prebuild Static Libraries
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 0 * * 0'  # weekly on Sunday
+    - cron: '0 0 * * 0'
 
 jobs:
   build:
@@ -14,66 +14,56 @@ jobs:
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
-            runner: ubuntu-latest
-            cc: gcc
-            cxx: g++
+            runner: ubuntu-24.04
             os: linux
           - target: aarch64-unknown-linux-gnu
-            runner: ubuntu-latest
-            cc: aarch64-linux-gnu-gcc
-            cxx: aarch64-linux-gnu-g++
+            runner: ubuntu-24.04-arm
             os: linux
-            cross: true
           - target: x86_64-apple-darwin
-            runner: macos-13
-            cc: /usr/bin/clang
-            cxx: /usr/bin/clang++
+            runner: macos-15-intel
             os: macos
           - target: aarch64-apple-darwin
-            runner: macos-14
-            cc: /usr/bin/clang
-            cxx: /usr/bin/clang++
+            runner: macos-latest
             os: macos
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install build deps (Linux native)
-        if: matrix.os == 'linux' && !matrix.cross
+      - name: Install build deps (Linux)
+        if: matrix.os == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libbotan-2-dev libjson-c-dev \
-            zlib1g-dev libbz2-dev cmake build-essential python3
-
-      - name: Install cross-compiler (Linux aarch64)
-        if: matrix.cross
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
-            libbotan-2-dev libjson-c-dev zlib1g-dev libbz2-dev \
-            cmake build-essential python3 xz-utils
+          sudo apt-get install -y libjson-c-dev zlib1g-dev libbz2-dev \
+            cmake build-essential python3 curl xz-utils
 
       - name: Install build deps (macOS)
         if: matrix.os == 'macos'
-        run: |
-          brew install botan json-c zlib bzip2 cmake
+        run: brew install json-c zlib bzip2 cmake
 
-      - name: Build Botan 3.6 (Linux)
-        if: matrix.os == 'linux'
+      - name: Build Botan 3.6
         run: |
           cd $RUNNER_TEMP
           curl -sLO https://botan.randombit.net/releases/Botan-3.6.0.tar.xz
           tar xf Botan-3.6.0.tar.xz
           cd Botan-3.6.0
-          python3 configure.py \
-            --prefix=$RUNNER_TEMP/botan-install \
-            --with-build-dir=$RUNNER_TEMP/botan-build \
-            --link-method=copy \
-            --cc=gcc --cc-bin=g++ \
-            --disable-modules=unsupported
-          make -f $RUNNER_TEMP/botan-build/Makefile -j$(nproc)
+          if [ "${{ matrix.os }}" = "macos" ]; then
+            python3 configure.py \
+              --prefix=$RUNNER_TEMP/botan-install \
+              --with-build-dir=$RUNNER_TEMP/botan-build \
+              --link-method=copy \
+              --cc=clang --cc-bin=/usr/bin/clang++ \
+              --disable-modules=unsupported
+          else
+            python3 configure.py \
+              --prefix=$RUNNER_TEMP/botan-install \
+              --with-build-dir=$RUNNER_TEMP/botan-build \
+              --link-method=copy \
+              --cc=gcc --cc-bin=g++ \
+              --disable-modules=unsupported
+          fi
+          make -f $RUNNER_TEMP/botan-build/Makefile -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
           make -f $RUNNER_TEMP/botan-build/Makefile install
 
-      - name: Build json-c (Linux)
+      - name: Build json-c (Linux only — macOS uses Homebrew)
         if: matrix.os == 'linux'
         run: |
           cd $RUNNER_TEMP
@@ -94,23 +84,26 @@ jobs:
           tar xf rnp-v0.18.1.tar.gz
 
           BOTAN_PREFIX="$RUNNER_TEMP/botan-install"
-          JSONC_PREFIX="$RUNNER_TEMP/json-c-install"
 
           if [ "${{ matrix.os }}" = "macos" ]; then
-            BOTAN_PREFIX="$(brew --prefix botan)"
             JSONC_PREFIX="$(brew --prefix json-c)"
             ZLIB_PREFIX="$(brew --prefix zlib)"
             BZIP2_PREFIX="$(brew --prefix bzip2)"
-            PREFIX_PATH="$BOTAN_PREFIX;$JSONC_PREFIX;$ZLIB_PREFIX;$BZIP2_PREFIX"
+            CC=/usr/bin/clang
+            CXX=/usr/bin/clang++
           else
+            JSONC_PREFIX="$RUNNER_TEMP/json-c-install"
             ZLIB_PREFIX="/usr"
             BZIP2_PREFIX="/usr"
-            PREFIX_PATH="$BOTAN_PREFIX;$JSONC_PREFIX;$ZLIB_PREFIX;$BZIP2_PREFIX"
+            CC=gcc
+            CXX=g++
           fi
 
+          PREFIX_PATH="$BOTAN_PREFIX;$JSONC_PREFIX;$ZLIB_PREFIX;$BZIP2_PREFIX"
+
           cmake -S rnp-v0.18.1 -B rnp-build \
-            -DCMAKE_C_COMPILER=${{ matrix.cc }} \
-            -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} \
+            -DCMAKE_C_COMPILER=$CC \
+            -DCMAKE_CXX_COMPILER=$CXX \
             -DCRYPTO_BACKEND=botan3 \
             -DBUILD_SHARED_LIBS=OFF \
             -DBUILD_TESTING=OFF \
@@ -118,7 +111,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$PREFIX_PATH" \
             -DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/rnp-install
-          cmake --build rnp-build --parallel $(nproc)
+          cmake --build rnp-build --parallel $(nproc 2>/dev/null || sysctl -n hw.ncpu)
           cmake --install rnp-build
 
       - name: Collect artifacts
@@ -126,18 +119,15 @@ jobs:
           TARGET=${{ matrix.target }}
           mkdir -p prebuilt/$TARGET/lib prebuilt/$TARGET/include/rnp
 
-          # librnp + libsexpp
           cp $RUNNER_TEMP/rnp-install/lib/librnp.a prebuilt/$TARGET/lib/
           cp $RUNNER_TEMP/rnp-install/lib/libsexpp.a prebuilt/$TARGET/lib/
 
-          # json-c
           if [ "${{ matrix.os }}" = "macos" ]; then
             cp $(brew --prefix json-c)/lib/libjson-c.a prebuilt/$TARGET/lib/
           else
             cp $RUNNER_TEMP/json-c-install/lib/libjson-c.a prebuilt/$TARGET/lib/
           fi
 
-          # headers
           cp $RUNNER_TEMP/rnp-install/include/rnp/*.h prebuilt/$TARGET/include/rnp/
 
           echo "=== prebuilt/$TARGET ==="
@@ -154,6 +144,7 @@ jobs:
     name: Commit prebuilt libs
     needs: build
     runs-on: ubuntu-latest
+    if: always()
     permissions:
       contents: write
       pull-requests: write
@@ -164,14 +155,16 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: prebuilt-downloads
+          pattern: prebuilt-*
           merge-multiple: false
 
       - name: Assemble prebuilt directory
         run: |
-          mkdir -p prebuilt
           for dir in prebuilt-downloads/prebuilt-*; do
-            target=$(echo $dir | sed 's|prebuilt-downloads/prebuilt-||')
-            cp -r "$dir" "prebuilt/$target"
+            target=$(basename "$dir" | sed 's/prebuilt-//')
+            rm -rf "prebuilt/$target"
+            mkdir -p "prebuilt/$target"
+            cp -r "$dir"/* "prebuilt/$target/"
           done
           echo "=== All prebuilt targets ==="
           find prebuilt -type f | sort
@@ -182,21 +175,23 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b chore/prebuilt-update
           git add prebuilt/
+          git diff --staged --quiet && echo "No changes" && exit 0
           git commit -m "chore: update prebuilt static libraries for all platforms
 
-          Built via the prebuild-static-libs workflow.
-          Targets: x86_64-linux, aarch64-linux, x86_64-macos, aarch64-macos"
+          Targets: $(ls prebuilt/ | tr '\n' ' ')"
           git push --force-with-lease origin chore/prebuilt-update
 
-      - name: Open PR
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.pulls.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: 'chore: update prebuilt static libraries for all platforms',
-              head: 'chore/prebuilt-update',
-              base: 'main',
-              body: 'Pre-built static librnp + json-c for all supported targets.'
-            });
+      - name: Open or update PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_EXISTS=$(gh pr list --head chore/prebuilt-update --state open --json number --jq 'length')
+          if [ "$PR_EXISTS" = "0" ]; then
+            gh pr create \
+              --title "chore: update prebuilt static libraries for all platforms" \
+              --body "Pre-built static librnp + json-c for all supported targets. Built via the prebuild-static-libs workflow." \
+              --base main \
+              --head chore/prebuilt-update
+          else
+            echo "PR already exists"
+          fi
