@@ -10,6 +10,16 @@ are the detailed audit trail for each feature area.
 
 ## [Unreleased]
 
+### Fixed
+
+- Pre-built static librnp + json-c bundled in crate ([#22](https://github.com/rnpgp/rnp-rs/pull/22)) by @[object]
+
+### Other
+
+- Release v0.1.3 ([#23](https://github.com/rnpgp/rnp-rs/pull/23)) by @[object]
+- Update all GitHub Actions to latest stable versions ([#20](https://github.com/rnpgp/rnp-rs/pull/20)) by @[object]
+- Add rnp-sexp 0.1 from crates.io as dev-dependency ([#19](https://github.com/rnpgp/rnp-rs/pull/19)) by @[object]
+
 ### Other
 
 - Update all GitHub Actions to latest stable versions ([#20](https://github.com/rnpgp/rnp-rs/pull/20)) by @[object]
