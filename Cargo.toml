@@ -2,11 +2,28 @@
 name = "rnp"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
+authors = ["Ribose Inc. <open.source@ribose.com>"]
 license = "BSD-2-Clause"
 description = "Idiomatic Rust binding to the RNP OpenPGP C FFI (librnp)"
 repository = "https://github.com/rnpgp/rnp-rs"
+homepage = "https://github.com/rnpgp/rnp-rs"
+documentation = "https://docs.rs/rnp"
+readme = "README.adoc"
 keywords = ["openpgp", "pgp", "rnp", "crypto", "cryptography"]
 categories = ["api-bindings", "cryptography"]
+include = [
+    "src/**/*.rs",
+    "build.rs",
+    "wrapper.h",
+    "Cargo.toml",
+    "Cargo.lock",
+    "README.adoc",
+    "LICENSE.md",
+    "vendor/rnp/CMakeLists.txt",
+    "vendor/rnp/src/lib/CMakeLists.txt",
+    "vendor/README.md",
+]
 
 [dependencies]
 snafu = "0.8"
@@ -14,6 +31,23 @@ snafu = "0.8"
 [build-dependencies]
 bindgen = "0.72"
 cmake = "0.1"
+
+[dev-dependencies]
+proptest = "1"
+criterion = "0.5"
+sequoia-openpgp = { version = "2", default-features = false, features = ["crypto-rust", "compression-deflate", "allow-experimental-crypto", "allow-variable-time-crypto"] }
+
+[[bench]]
+name = "sign_verify"
+harness = false
+
+[[bench]]
+name = "encrypt_decrypt"
+harness = false
+
+[[bench]]
+name = "keygen"
+harness = false
 
 [features]
 default = []
@@ -33,6 +67,10 @@ crypto-refresh = []
 # diagnostic output to a file. Off by default because most consumers
 # don't need it.
 logging = []
+# Pull in sequoia-openpgp for cross-validation tests in `tests/`
+# (interop round-trips with the Rust reference OpenPGP implementation).
+# Off by default to keep the default test matrix fast.
+cross-validation = []
 
 [lib]
 # The bindgen-generated FFI bindings carry the upstream C API doc comments,
@@ -40,3 +78,8 @@ logging = []
 # compile as standalone programs. Those snippets are C/JSON, not Rust, so we
 # disable doctests on the crate.
 doctest = false
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

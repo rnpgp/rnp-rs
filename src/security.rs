@@ -8,9 +8,8 @@
 use crate::context::Context;
 use crate::error::{self, check, Result};
 use crate::ffi;
-use crate::ops::cstr_to_string;
+use crate::ffi_safe::{call_for_bool, call_for_optional_string, call_for_string, call_for_usize};
 use std::ffi::CString;
-use std::os::raw::c_char;
 use std::ptr;
 
 /// Prohibition level for an algorithm or operation.
@@ -171,19 +170,17 @@ impl Context {
     ) -> Result<usize> {
         let type_c = CString::new(typ.as_str()).unwrap();
         let name_c = CString::new(name).map_err(|_| error::Error::NulByte)?;
-        let mut removed: usize = 0;
-        unsafe {
-            check(ffi::rnp_remove_security_rule(
+        call_for_usize(|out| unsafe {
+            ffi::rnp_remove_security_rule(
                 self.ffi,
                 type_c.as_ptr(),
                 name_c.as_ptr(),
                 0,
                 flags.bits(),
                 0,
-                &mut removed,
-            ))?;
-        }
-        Ok(removed)
+                out,
+            )
+        })
     }
 
     /// Override the wall-clock used by librnp (mostly for tests).
@@ -198,40 +195,22 @@ impl Context {
 pub fn supports_feature(typ: FeatureType, name: &str) -> Result<bool> {
     let type_c = CString::new(typ.as_str()).unwrap();
     let name_c = CString::new(name).map_err(|_| error::Error::NulByte)?;
-    let mut supported: bool = false;
-    unsafe {
-        check(ffi::rnp_supports_feature(
-            type_c.as_ptr(),
-            name_c.as_ptr(),
-            &mut supported,
-        ))?;
-    }
-    Ok(supported)
+    call_for_bool(|out| unsafe {
+        ffi::rnp_supports_feature(type_c.as_ptr(), name_c.as_ptr(), out)
+    })
 }
 
 /// List all feature names supported under `typ`. Returned as a JSON array
 /// string (librnp's format).
 pub fn supported_features(typ: FeatureType) -> Result<String> {
     let type_c = CString::new(typ.as_str()).unwrap();
-    let mut raw: *mut c_char = ptr::null_mut();
-    unsafe {
-        check(ffi::rnp_supported_features(type_c.as_ptr(), &mut raw))?;
-        cstr_to_string(raw)
-    }
+    call_for_string(|out| unsafe { ffi::rnp_supported_features(type_c.as_ptr(), out) })
 }
 
 /// Recommended S2K iteration count for `hash` and target `memory` bytes.
 pub fn calculate_iterations(hash: crate::keygen::Hash, memory: usize) -> Result<usize> {
     let hash_c = CString::new(hash.as_str()).unwrap();
-    let mut iterations: usize = 0;
-    unsafe {
-        check(ffi::rnp_calculate_iterations(
-            hash_c.as_ptr(),
-            memory,
-            &mut iterations,
-        ))?;
-    }
-    Ok(iterations)
+    call_for_usize(|out| unsafe { ffi::rnp_calculate_iterations(hash_c.as_ptr(), memory, out) })
 }
 
 /// Manually request a password from the configured password provider on
@@ -248,18 +227,8 @@ pub fn request_password(
 ) -> Result<Option<crate::SecretString>> {
     let key_handle = key.map(|k| k.handle).unwrap_or(ptr::null_mut());
     let ctx_c = CString::new(context_str).map_err(|_| error::Error::NulByte)?;
-    let mut raw: *mut c_char = ptr::null_mut();
-    unsafe {
-        check(ffi::rnp_request_password(
-            ctx.ffi,
-            key_handle,
-            ctx_c.as_ptr(),
-            &mut raw,
-        ))?;
-        if raw.is_null() {
-            return Ok(None);
-        }
-        let s = crate::ops::cstr_to_optional_string(raw).unwrap_or_default();
-        Ok(Some(crate::SecretString::new(s)))
-    }
+    let s = call_for_optional_string(|out| unsafe {
+        ffi::rnp_request_password(ctx.ffi, key_handle, ctx_c.as_ptr(), out)
+    })?;
+    Ok(s.map(crate::SecretString::new))
 }

@@ -1,15 +1,18 @@
 //! Phase 2: read-only key inspection.
 
-#![allow(deprecated)]
+
+
+mod common;
+use common::signing_key;
 
 use rnp::{
-    generate_test_key, Algorithm, Context, KeyBuilder, KeyIdentifier, KeyUsage, UidType,
+    Algorithm, Context, KeyBuilder, KeyIdentifier, KeyUsage, UidType,
 };
 
 #[test]
 fn key_scalar_getters() {
     let ctx = Context::new().expect("ctx");
-    let key = generate_test_key(&ctx, "inspector <inspector@example.com>").expect("key");
+    let key = signing_key(&ctx, "inspector <inspector@example.com>");
 
     assert_eq!(key.alg().unwrap(), "RSA");
     assert_eq!(key.bits().unwrap(), 2048);
@@ -39,7 +42,7 @@ fn key_scalar_getters() {
 #[test]
 fn key_uids() {
     let ctx = Context::new().expect("ctx");
-    let key = generate_test_key(&ctx, "uidhost <uidhost@example.com>").expect("key");
+    let key = signing_key(&ctx, "uidhost <uidhost@example.com>");
 
     let count = key.uid_count().unwrap();
     assert!(count >= 1, "expected at least 1 uid, got {count}");

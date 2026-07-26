@@ -6,11 +6,10 @@
 //! `String`s rather than parsing into Rust structs to avoid coupling to a
 //! fixed shape.
 
-use crate::error::{self, check, Result};
+use crate::error::{check, Result};
 use crate::ffi;
-use crate::ops::{cstr_to_string, Input, Output};
-use std::os::raw::c_char;
-use std::ptr;
+use crate::ffi_safe::call_for_string;
+use crate::ops::{Input, Output};
 
 /// Flags controlling the human-readable packet dump (`rnp_dump_packets_to_output`).
 /// Wraps the `RNP_DUMP_*` constants.
@@ -97,12 +96,9 @@ pub fn dump_packets_to_output(
 
 /// Dump packet information from `input` as a JSON string.
 pub fn dump_packets_to_json(input: &Input, flags: JsonDumpFlags) -> Result<String> {
-    let mut raw: *mut c_char = ptr::null_mut();
-    unsafe {
-        check(ffi::rnp_dump_packets_to_json(input.as_ptr(), flags.bits(), &mut raw))?;
-        // SAFETY: raw was populated by librnp and is owned by us.
-        cstr_to_string(raw)
-    }
+    call_for_string(|out| unsafe {
+        ffi::rnp_dump_packets_to_json(input.as_ptr(), flags.bits(), out)
+    })
 }
 
 /// Convenience: dump `bytes` packet structure as a JSON string.
@@ -113,4 +109,4 @@ pub fn dump_packets_bytes_to_json(bytes: &[u8], flags: JsonDumpFlags) -> Result<
 
 // Re-export error for symmetry with `armor`.
 #[allow(unused_imports)]
-use error as _error_reexport;
+use crate::error as _error_reexport;

@@ -197,9 +197,17 @@ Status snapshot (full detail in the per-phase TODO files):
   via `rnp_buffer_clear`. `request_password` returns `SecretString`.
 - **Phase 17 — Misc getters.** Done. `Key::default_key_for(usage)`,
   `Signature::signer_key()`.
-- **Phase 18 — Architectural cleanup.** Partial. `call_for_string` /
-  `call_for_optional_string` helpers added and used in new code; legacy
-  call sites pending a focused refactor.
+- **Phase 18 — Architectural cleanup.** Done. `call_for_string` /
+  `call_for_optional_string` helpers used everywhere; 21 legacy call
+  sites converted.
+- **Phase 19 — Cleartext signing.** Done. `signature::sign_cleartext`
+  joins inline/detached as the third signing mode.
+- **Phase 20 — SignatureType enum.** Done. 15 named variants + Unknown
+  fallback, `parse`/`as_str` round-trip, `Signature::sig_type_enum`.
+- **Phase 21 — Docs and examples.** Done. README rewrite, expanded
+  crate-level docs, `examples/{sign_verify,encrypt_decrypt,keygen}.rs`.
+- **Phase 22 — CI workflow.** Done. `.github/workflows/ci.yml` with three
+  jobs (system, vendored, pqc) covering the test matrix.
 
 Each phase should land as its own focused PR (or set of PRs) with
 round-trip integration tests modeled on the existing files in `tests/`.

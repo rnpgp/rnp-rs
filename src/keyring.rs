@@ -4,8 +4,9 @@
 use crate::context::Context;
 use crate::error::{self, check, Result};
 use crate::ffi;
+use crate::ffi_safe::{call_for_string, call_for_usize};
 use crate::key::{KeyIdentifier, LoadSaveFlags, UnloadFlags};
-use crate::ops::{cstr_to_string, Input};
+use crate::ops::Input;
 use std::ffi::CString;
 use std::os::raw::c_char;
 use std::path::PathBuf;
@@ -48,62 +49,34 @@ impl Context {
         flags: crate::key::LoadSaveFlags,
     ) -> Result<String> {
         let input = Input::from_memory(bytes)?;
-        let mut raw: *mut c_char = ptr::null_mut();
-        unsafe {
-            check(ffi::rnp_import_keys(
-                self.ffi,
-                input.as_ptr(),
-                flags.bits(),
-                &mut raw,
-            ))?;
-            if raw.is_null() {
-                return Err(error::Error::NullPointer);
-            }
-            cstr_to_string(raw)
-        }
+        call_for_string(|raw| unsafe {
+            ffi::rnp_import_keys(self.ffi, input.as_ptr(), flags.bits(), raw)
+        })
     }
 
     /// Import signatures from raw bytes. Returns the status JSON.
     pub fn import_signatures(&self, bytes: &[u8], flags: u32) -> Result<String> {
         let input = Input::from_memory(bytes)?;
-        let mut raw: *mut c_char = ptr::null_mut();
-        unsafe {
-            check(ffi::rnp_import_signatures(
-                self.ffi,
-                input.as_ptr(),
-                flags,
-                &mut raw,
-            ))?;
-            if raw.is_null() {
-                return Err(error::Error::NullPointer);
-            }
-            cstr_to_string(raw)
-        }
+        call_for_string(|raw| unsafe {
+            ffi::rnp_import_signatures(self.ffi, input.as_ptr(), flags, raw)
+        })
     }
 
     /// Number of public keys currently loaded.
     pub fn public_key_count(&self) -> Result<usize> {
-        let mut n: usize = 0;
-        unsafe { check(ffi::rnp_get_public_key_count(self.ffi, &mut n))? };
-        Ok(n)
+        call_for_usize(|out| unsafe { ffi::rnp_get_public_key_count(self.ffi, out) })
     }
 
     /// Number of secret keys currently loaded.
     pub fn secret_key_count(&self) -> Result<usize> {
-        let mut n: usize = 0;
-        unsafe { check(ffi::rnp_get_secret_key_count(self.ffi, &mut n))? };
-        Ok(n)
+        call_for_usize(|out| unsafe { ffi::rnp_get_secret_key_count(self.ffi, out) })
     }
 
     /// Default OpenPGP home directory (typically `~/.gnupg` or
     /// `$GNUPGHOME`).
     pub fn default_homedir() -> Result<PathBuf> {
-        let mut raw: *mut c_char = ptr::null_mut();
-        unsafe {
-            check(ffi::rnp_get_default_homedir(&mut raw))?;
-            let s = cstr_to_string(raw)?;
-            Ok(PathBuf::from(s))
-        }
+        let s = call_for_string(|out| unsafe { ffi::rnp_get_default_homedir(out) })?;
+        Ok(PathBuf::from(s))
     }
 
     /// Detect the keyring format of an existing homedir. Returns
@@ -133,15 +106,9 @@ impl Context {
 
     /// Detect the format of a keyring blob (`"GPG"`, `"KBX"`, `"JSON"`).
     pub fn detect_key_format(bytes: &[u8]) -> Result<String> {
-        let mut raw: *mut c_char = ptr::null_mut();
-        unsafe {
-            check(ffi::rnp_detect_key_format(
-                bytes.as_ptr(),
-                bytes.len(),
-                &mut raw,
-            ))?;
-            cstr_to_string(raw)
-        }
+        call_for_string(|out| unsafe {
+            ffi::rnp_detect_key_format(bytes.as_ptr(), bytes.len(), out)
+        })
     }
 
     /// Iterate over identifiers of all keys in the keyring. See

@@ -1,9 +1,12 @@
 //! Phase 2 finishing + Phase 5 keyring + Phase 8 security/version.
 
-#![allow(deprecated)]
+
+
+mod common;
+use common::signing_key;
 
 use rnp::{
-    generate_test_key, supports_feature, Algorithm, Cipher, Context, FeatureType, Hash,
+    supports_feature, Algorithm, Cipher, Context, FeatureType, Hash,
     KeyBuilder, KeyIdentifier, KeyUsage, Output, ProtectOptions, RemoveFlags,
 };
 
@@ -12,7 +15,7 @@ use rnp::{
 #[test]
 fn key_extended_getters() {
     let ctx = Context::new().expect("ctx");
-    let key = generate_test_key(&ctx, "extended <extended@example.com>").expect("key");
+    let key = signing_key(&ctx, "extended <extended@example.com>");
 
     // RSA key: dsa_qbits should be 0 (the call succeeds, value is N/A).
     assert_eq!(key.dsa_qbits().unwrap_or(0), 0);
@@ -27,7 +30,7 @@ fn key_extended_getters() {
 #[test]
 fn key_protection_getters() {
     let ctx = Context::new().expect("ctx");
-    let key = generate_test_key(&ctx, "prot <prot@example.com>").expect("key");
+    let key = signing_key(&ctx, "prot <prot@example.com>");
 
     // Freshly generated unprotected key.
     assert!(!key.is_protected().unwrap());
@@ -44,7 +47,7 @@ fn key_protection_getters() {
 #[test]
 fn signature_enumeration_and_subpackets() {
     let ctx = Context::new().expect("ctx");
-    let key = generate_test_key(&ctx, "sigs <sigs@example.com>").expect("key");
+    let key = signing_key(&ctx, "sigs <sigs@example.com>");
 
     // The direct-key signature list on a freshly generated key is empty —
     // self-signatures live on UIDs, not on the key itself.
@@ -61,7 +64,7 @@ fn signature_enumeration_and_subpackets() {
 #[test]
 fn protect_unprotect_roundtrip() {
     let ctx = Context::new().expect("ctx");
-    let key = generate_test_key(&ctx, "prot-rt <prot-rt@example.com>").expect("key");
+    let key = signing_key(&ctx, "prot-rt <prot-rt@example.com>");
     assert!(!key.is_protected().unwrap());
 
     key.protect(
@@ -85,7 +88,7 @@ fn protect_unprotect_roundtrip() {
 #[test]
 fn add_uid_then_inspect() {
     let ctx = Context::new().expect("ctx");
-    let key = generate_test_key(&ctx, "adduid <adduid@example.com>").expect("key");
+    let key = signing_key(&ctx, "adduid <adduid@example.com>");
     let before = key.uid_count().unwrap();
 
     key.add_uid(
@@ -101,7 +104,7 @@ fn add_uid_then_inspect() {
 #[test]
 fn remove_key_drops_count() {
     let ctx = Context::new().expect("ctx");
-    let key = generate_test_key(&ctx, "removeme <removeme@example.com>").expect("key");
+    let key = signing_key(&ctx, "removeme <removeme@example.com>");
     let grip = key.grip().unwrap();
     let before = ctx.public_key_count().unwrap();
 
@@ -120,7 +123,7 @@ fn remove_key_drops_count() {
 #[test]
 fn save_unload_reload_roundtrip() {
     let ctx = Context::new().expect("ctx");
-    let key = generate_test_key(&ctx, "save <save@example.com>").expect("key");
+    let key = signing_key(&ctx, "save <save@example.com>");
     let original_fp = key.fingerprint().unwrap();
     drop(key);
 
@@ -153,7 +156,7 @@ fn save_unload_reload_roundtrip() {
 #[test]
 fn identifier_iterator_yields_keys() {
     let ctx = Context::new().expect("ctx");
-    let _ = generate_test_key(&ctx, "iter <iter@example.com>").expect("key");
+    let _ = signing_key(&ctx, "iter <iter@example.com>");
 
     let count_fps: usize = ctx.identifiers(rnp::IdentifierKind::Fingerprint).unwrap().count();
     assert!(count_fps >= 1, "iterator should yield at least one fp");

@@ -1,87 +1,15 @@
-//! Encryption and decryption.
-//!
-//! [`Encryptor`] is a builder over `rnp_op_encrypt_*`; the op handle is
-//! created in [`Encryptor::build`] when the destination [`Output`] is
-//! available. [`decrypt`] is the simple-path wrapper around `rnp_decrypt`.
-//!
-//! Rich decryption-result inspection (recipient / symenc / protection info)
-//! is deferred — it requires unwrapping the verify-op surface from
-//! `signature::verify` into a typed `VerifyResult`, which is its own phase.
+//! [`Encryptor`] — builder over `rnp_op_encrypt_*`.
 
+use crate::algorithm::{Cipher, Compression, Hash};
 use crate::context::Context;
-use crate::error::{self, check, Result};
+use crate::error::{check, Result};
 use crate::ffi;
 use crate::key::Key;
-use crate::keygen::{Cipher, Compression, Hash};
 use crate::ops::{Input, Output};
 use std::ffi::CString;
+use std::ptr;
 
-/// Flags for [`Encryptor::set_flags`]. Wraps `RNP_ENCRYPT_*`.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct EncryptFlags(pub u32);
-
-impl EncryptFlags {
-    /// Don't wrap plaintext in a literal-data packet — used when encrypting
-    /// already-signed data. Wraps `RNP_ENCRYPT_NOWRAP`.
-    pub const NOWRAP: Self = Self(ffi::RNP_ENCRYPT_NOWRAP as u32);
-
-    pub fn bits(self) -> u32 {
-        self.0
-    }
-}
-
-impl std::ops::BitOr for EncryptFlags {
-    type Output = Self;
-    fn bitor(self, rhs: Self) -> Self {
-        Self(self.0 | rhs.0)
-    }
-}
-
-/// AEAD algorithm. Pass to [`Encryptor::aead`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum AeadType {
-    Ocb,
-    Eax,
-    Gcm,
-}
-
-impl AeadType {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            AeadType::Ocb => "OCB",
-            AeadType::Eax => "EAX",
-            AeadType::Gcm => "GCM",
-        }
-    }
-}
-
-/// S2K / encryption config for a password added via [`Encryptor::add_password`].
-///
-/// Built via [`AddPasswordOptions::default`] then chained setters. OCP —
-/// adding a new S2K parameter doesn't break call sites.
-#[derive(Default)]
-pub struct AddPasswordOptions {
-    hash: Option<Hash>,
-    iterations: Option<usize>,
-    cipher: Option<Cipher>,
-}
-
-impl AddPasswordOptions {
-    pub fn hash(mut self, h: Hash) -> Self {
-        self.hash = Some(h);
-        self
-    }
-
-    pub fn iterations(mut self, n: usize) -> Self {
-        self.iterations = Some(n);
-        self
-    }
-
-    pub fn cipher(mut self, c: Cipher) -> Self {
-        self.cipher = Some(c);
-        self
-    }
-}
+use super::{AddPasswordOptions, AeadType, EncryptFlags};
 
 /// Builder over `rnp_op_encrypt_*`. Configured first, then executed with
 /// [`Encryptor::build`] against the caller-supplied destination [`Output`].
@@ -101,28 +29,28 @@ impl AddPasswordOptions {
 /// let _ciphertext = output.into_bytes().unwrap();
 /// ```
 pub struct Encryptor<'a> {
-    ctx: &'a Context,
-    input: Input,
-    recipients: Vec<&'a Key<'a>>,
-    signatures: Vec<&'a Key<'a>>,
-    passwords: Vec<(CString, AddPasswordOptions)>,
-    armor: bool,
-    cipher: Option<Cipher>,
-    hash: Option<Hash>,
-    compression: Option<(Compression, u32)>,
-    aead: Option<AeadType>,
-    aead_bits: Option<i32>,
-    file_name: Option<CString>,
-    file_mtime: Option<u32>,
-    creation_time: Option<u32>,
-    expiration_time: Option<u32>,
-    flags: EncryptFlags,
+    pub(crate) ctx: &'a Context,
+    pub(crate) input: Input,
+    pub(crate) recipients: Vec<&'a Key<'a>>,
+    pub(crate) signatures: Vec<&'a Key<'a>>,
+    pub(crate) passwords: Vec<(CString, AddPasswordOptions)>,
+    pub(crate) armor: bool,
+    pub(crate) cipher: Option<Cipher>,
+    pub(crate) hash: Option<Hash>,
+    pub(crate) compression: Option<(Compression, u32)>,
+    pub(crate) aead: Option<AeadType>,
+    pub(crate) aead_bits: Option<i32>,
+    pub(crate) file_name: Option<CString>,
+    pub(crate) file_mtime: Option<u32>,
+    pub(crate) creation_time: Option<u32>,
+    pub(crate) expiration_time: Option<u32>,
+    pub(crate) flags: EncryptFlags,
     #[cfg(feature = "pqc")]
-    prefer_pqc: bool,
+    pub(crate) prefer_pqc: bool,
     #[cfg(feature = "crypto-refresh")]
-    pkesk_v6: bool,
+    pub(crate) pkesk_v6: bool,
     #[cfg(feature = "crypto-refresh")]
-    skesk_v6: bool,
+    pub(crate) skesk_v6: bool,
 }
 
 impl<'a> Encryptor<'a> {
@@ -267,7 +195,7 @@ impl<'a> Encryptor<'a> {
 
     /// Execute the encryption, writing the ciphertext to `output`.
     pub fn build(self, output: &mut Output) -> Result<()> {
-        let mut op: ffi::rnp_op_encrypt_t = std::ptr::null_mut();
+        let mut op: ffi::rnp_op_encrypt_t = ptr::null_mut();
         unsafe {
             check(ffi::rnp_op_encrypt_create(
                 &mut op,
@@ -294,13 +222,13 @@ impl<'a> Encryptor<'a> {
     }
 }
 
-unsafe fn apply_config(op: ffi::rnp_op_encrypt_t, e: &Encryptor<'_>) -> Result<()> {
+pub(crate) unsafe fn apply_config(op: ffi::rnp_op_encrypt_t, e: &Encryptor<'_>) -> Result<()> {
     unsafe {
         for key in &e.recipients {
             check(ffi::rnp_op_encrypt_add_recipient(op, key.handle))?;
         }
         for key in &e.signatures {
-            check(ffi::rnp_op_encrypt_add_signature(op, key.handle, std::ptr::null_mut()))?;
+            check(ffi::rnp_op_encrypt_add_signature(op, key.handle, ptr::null_mut()))?;
         }
         for (pw, opts) in &e.passwords {
             let hash_str = opts
@@ -332,11 +260,7 @@ unsafe fn apply_config(op: ffi::rnp_op_encrypt_t, e: &Encryptor<'_>) -> Result<(
         }
         if let Some((alg, level)) = e.compression {
             let cs = CString::new(alg.as_str()).unwrap();
-            check(ffi::rnp_op_encrypt_set_compression(
-                op,
-                cs.as_ptr(),
-                level as i32,
-            ))?;
+            check(ffi::rnp_op_encrypt_set_compression(op, cs.as_ptr(), level as i32))?;
         }
         if let Some(aead) = e.aead {
             let cs = CString::new(aead.as_str()).unwrap();
@@ -375,25 +299,3 @@ unsafe fn apply_config(op: ffi::rnp_op_encrypt_t, e: &Encryptor<'_>) -> Result<(
         Ok(())
     }
 }
-
-/// Decrypt `ciphertext` and return the plaintext bytes. Requires that the
-/// keyring contain the matching secret key (unlocked) or that a password
-/// provider returns the right password.
-pub fn decrypt(ctx: &Context, ciphertext: &[u8]) -> Result<Vec<u8>> {
-    let input = Input::from_memory(ciphertext)?;
-    let output = Output::to_memory()?;
-    unsafe {
-        check(ffi::rnp_decrypt(ctx.ffi, input.as_ptr(), output.as_ptr()))?;
-    }
-    output.into_bytes()
-}
-
-/// Decrypt `ciphertext` and write the plaintext to `output`.
-pub fn decrypt_to(ctx: &Context, ciphertext: &[u8], output: &mut Output) -> Result<()> {
-    let input = Input::from_memory(ciphertext)?;
-    unsafe { check(ffi::rnp_decrypt(ctx.ffi, input.as_ptr(), output.as_ptr())) }
-}
-
-// Re-export the error type so `use crate::encrypt::*` doesn't drop it.
-#[allow(unused_imports)]
-use error as _error_alias;

@@ -2,6 +2,7 @@
 
 use crate::error::{self, check, Result};
 use crate::ffi;
+use crate::ffi_safe::{call_for_bool, call_for_u32, call_for_usize};
 use std::marker::PhantomData;
 use std::ptr;
 
@@ -49,8 +50,7 @@ impl<'key> Uid<'key> {
 
     /// The UID type — textual or attribute.
     pub fn uid_type(&self) -> Result<UidType> {
-        let mut raw: u32 = 0;
-        unsafe { check(ffi::rnp_uid_get_type(self.handle, &mut raw))? };
+        let raw = call_for_u32(|out| unsafe { ffi::rnp_uid_get_type(self.handle, out) })?;
         Ok(UidType::from_raw(raw))
     }
 
@@ -78,31 +78,23 @@ impl<'key> Uid<'key> {
 
     /// True if this UID is marked as the primary UID on the key.
     pub fn is_primary(&self) -> Result<bool> {
-        let mut b: bool = false;
-        unsafe { check(ffi::rnp_uid_is_primary(self.handle, &mut b))? };
-        Ok(b)
+        call_for_bool(|out| unsafe { ffi::rnp_uid_is_primary(self.handle, out) })
     }
 
     /// True if the UID is currently valid (not revoked, on a valid key, etc.).
     pub fn is_valid(&self) -> Result<bool> {
-        let mut b: bool = false;
-        unsafe { check(ffi::rnp_uid_is_valid(self.handle, &mut b))? };
-        Ok(b)
+        call_for_bool(|out| unsafe { ffi::rnp_uid_is_valid(self.handle, out) })
     }
 
     /// True if the UID has been revoked.
     pub fn is_revoked(&self) -> Result<bool> {
-        let mut b: bool = false;
-        unsafe { check(ffi::rnp_uid_is_revoked(self.handle, &mut b))? };
-        Ok(b)
+        call_for_bool(|out| unsafe { ffi::rnp_uid_is_revoked(self.handle, out) })
     }
 
     /// Number of signatures on this UID (self-signatures and
     /// third-party certifications).
     pub fn signature_count(&self) -> Result<usize> {
-        let mut n: usize = 0;
-        unsafe { check(ffi::rnp_uid_get_signature_count(self.handle, &mut n))? };
-        Ok(n)
+        call_for_usize(|out| unsafe { ffi::rnp_uid_get_signature_count(self.handle, out) })
     }
 
     /// Borrow the signature at `idx` on this UID. Returned [`Signature`]

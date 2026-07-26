@@ -1,0 +1,60 @@
+# Configuration for typos spell checker
+# See: https://github.com/crate-ci/typos
+
+[files]
+extend-exclude = ["target/", ".git/", "vendor/", "TODO.roadmap/"]
+
+[default.extend-words]
+# Project-specific terms
+rnp = "rnp"
+librnp = "librnp"
+rnpgp = "rnpgp"
+
+# OpenPGP / RFC terms
+OpenPGP = "OpenPGP"
+PKESK = "PKESK"
+SKESK = "SKESK"
+AEAD = "AEAD"
+SBox = "SBox"
+
+# Algorithm / crypto names
+RSA = "RSA"
+EDDSA = "EDDSA"
+ECDSA = "ECDSA"
+ECDH = "ECDH"
+DSA = "DSA"
+Kyber = "Kyber"
+Dilithium = "Dilithium"
+Sphincs = "Sphincs"
+Botan = "Botan"
+
+# Hash names
+SHA = "SHA"
+SHAKE = "SHAKE"
+
+# Rust / FFI terms
+ffi = "ffi"
+FFI = "FFI"
+bindgen = "bindgen"
+snafu = "snafu"
+criteron = "criteron"
+proptest = "proptest"
+sequoia = "sequoia"
+
+# Documentation terms
+adoc = "adoc"
+asciidoc = "asciidoc"
+AsciiDoc = "AsciiDoc"
+CHANGELOG = "CHANGELOG"
+CONTRIBUTING = "CONTRIBUTING"
+SECURITY = "SECURITY"
+README = "README"
+
+# Common abbreviations
+serde = "serde"
+clippy = "clippy"
+rustfmt = "rustfmt"
+wasm = "wasm"
+
+# S-expression parser
+sexpp = "sexpp"
