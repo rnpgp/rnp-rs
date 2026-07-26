@@ -12,6 +12,10 @@ are the detailed audit trail for each feature area.
 
 ### Other
 
+- Update prebuilt static libraries for all platforms ([#30](https://github.com/rnpgp/rnp-rs/pull/30)) by @[object]
+
+### Other
+
 - Add prebuilt static libs for x86_64-unknown-linux-gnu ([#26](https://github.com/rnpgp/rnp-rs/pull/26)) by @[object]
 
 ### Other
