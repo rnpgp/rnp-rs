@@ -14,10 +14,17 @@ jobs:
   # release-plz: opens a "release PR" that bumps version + regenerates
   # CHANGELOG when conventional commits land on main. Merging the PR
   # publishes to crates.io.
+  #
+  # We build librnp 0.18.1 from source because Ubuntu's librnp-dev is
+  # significantly older and missing many symbols the crate uses (notably
+  # the rnp_op_verify_get_* family added in 0.17+).
   # ---------------------------------------------------------------------
   release-plz:
     name: release-plz
     runs-on: ubuntu-latest
+    env:
+      BOTAN_PREFIX: ${{ github.workspace }}/botan-install
+      RNP_PREFIX: ${{ github.workspace }}/rnp-install
     steps:
       - uses: actions/checkout@v4
         with:
@@ -25,10 +32,49 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Install librnp
+      - name: Install build deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y librnp-dev
+          sudo apt-get install -y libbotan-2-dev libjson-c-dev \
+            zlib1g-dev libbz2-dev cmake build-essential python3
+
+      - name: Build Botan 3.x
+        run: |
+          curl -sLO https://botan.randombit.net/releases/Botan-3.6.0.tar.xz
+          tar xf Botan-3.6.0.tar.xz
+          cd Botan-3.6.0
+          python3 configure.py \
+            --prefix=$BOTAN_PREFIX \
+            --with-build-dir=$RUNNER_TEMP/botan-build \
+            --link-method=copy \
+            --cc=gcc --cc-bin=g++ \
+            --disable-modules=unsupported
+          make -f $RUNNER_TEMP/botan-build/Makefile -j$(nproc)
+          make -f $RUNNER_TEMP/botan-build/Makefile install
+
+      - name: Build librnp 0.18.1
+        run: |
+          curl -sLO https://github.com/rnpgp/rnp/releases/download/v0.18.1/rnp-0.18.1.tar.gz
+          tar xf rnp-0.18.1.tar.gz
+          cmake -S rnp-0.18.1 -B rnp-0.18.1/build \
+            -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ \
+            -DCRYPTO_BACKEND=botan3 \
+            -DBUILD_SHARED_LIBS=ON \
+            -DBUILD_TESTING=OFF \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=$RNP_PREFIX \
+            -DCMAKE_PREFIX_PATH=$BOTAN_PREFIX
+          cmake --build rnp-0.18.1/build --parallel $(nproc)
+          cmake --install rnp-0.18.1/build
+
+      - name: Point rnp-rs at the locally-built librnp
+        run: |
+          echo "RNP_INCLUDE_DIR=$RNP_PREFIX/include" >> $GITHUB_ENV
+          echo "RNP_LIB_DIR=$RNP_PREFIX/lib" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=$RNP_PREFIX/lib:$BOTAN_PREFIX/lib" >> $GITHUB_ENV
+
+      - name: Smoke-build the crate against the new librnp
+        run: cargo build --all-targets
 
       - uses: MarcoIeni/release-plz-action@v0.5
         env:
@@ -43,6 +89,9 @@ jobs:
     name: Manual publish (tag-driven)
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    env:
+      BOTAN_PREFIX: ${{ github.workspace }}/botan-install
+      RNP_PREFIX: ${{ github.workspace }}/rnp-install
     steps:
       - uses: actions/checkout@v4
         with:
@@ -50,13 +99,39 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Install librnp
+      - name: Install build deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y librnp-dev libbotan-2-dev libjson-c-dev \
-            zlib1g-dev libbz2-dev cmake
+          sudo apt-get install -y libbotan-2-dev libjson-c-dev \
+            zlib1g-dev libbz2-dev cmake build-essential python3
 
-      - name: cargo test
+      - name: Build Botan 3.x + librnp 0.18.1
+        run: |
+          curl -sLO https://botan.randombit.net/releases/Botan-3.6.0.tar.xz
+          tar xf Botan-3.6.0.tar.xz
+          cd Botan-3.6.0
+          python3 configure.py --prefix=$BOTAN_PREFIX --cc=gcc --cc-bin=g++ \
+            --with-build-dir=$RUNNER_TEMP/botan-build --link-method=copy
+          make -f $RUNNER_TEMP/botan-build/Makefile -j$(nproc)
+          make -f $RUNNER_TEMP/botan-build/Makefile install
+          cd ..
+          curl -sLO https://github.com/rnpgp/rnp/releases/download/v0.18.1/rnp-0.18.1.tar.gz
+          tar xf rnp-0.18.1.tar.gz
+          cmake -S rnp-0.18.1 -B rnp-0.18.1/build \
+            -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ \
+            -DCRYPTO_BACKEND=botan3 \
+            -DBUILD_SHARED_LIBS=ON -DBUILD_TESTING=OFF \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=$RNP_PREFIX \
+            -DCMAKE_PREFIX_PATH=$BOTAN_PREFIX
+          cmake --build rnp-0.18.1/build --parallel $(nproc)
+          cmake --install rnp-0.18.1/build
+
+      - name: cargo test (system)
+        env:
+          RNP_INCLUDE_DIR: ${{ env.RNP_PREFIX }}/include
+          RNP_LIB_DIR: ${{ env.RNP_PREFIX }}/lib
+          LD_LIBRARY_PATH: ${{ env.RNP_PREFIX }}/lib:${{ env.BOTAN_PREFIX }}/lib
         run: cargo test --no-fail-fast
 
       - name: cargo test --features vendored
