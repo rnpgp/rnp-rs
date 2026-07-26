@@ -1,5 +1,5 @@
 [package]
-name = "rnp"
+name = "rnp-rs"
 version = "0.1.1"
 edition = "2024"
 rust-version = "1.85"
@@ -8,7 +8,7 @@ license = "BSD-2-Clause"
 description = "Idiomatic Rust binding to the RNP OpenPGP C FFI (librnp)"
 repository = "https://github.com/rnpgp/rnp-rs"
 homepage = "https://github.com/rnpgp/rnp-rs"
-documentation = "https://docs.rs/rnp"
+documentation = "https://docs.rs/rnp-rs"
 readme = "README.adoc"
 keywords = ["openpgp", "pgp", "rnp", "crypto", "cryptography"]
 categories = ["api-bindings", "cryptography"]
@@ -73,6 +73,7 @@ logging = []
 cross-validation = []
 
 [lib]
+name = "rnp"
 # The bindgen-generated FFI bindings carry the upstream C API doc comments,
 # many of which contain fenced code blocks that the doctest harness tries to
 # compile as standalone programs. Those snippets are C/JSON, not Rust, so we
