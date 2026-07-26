@@ -1,0 +1,202 @@
+name: Prebuild Static Libraries
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * 0'  # weekly on Sunday
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+            cc: gcc
+            cxx: g++
+            os: linux
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-latest
+            cc: aarch64-linux-gnu-gcc
+            cxx: aarch64-linux-gnu-g++
+            os: linux
+            cross: true
+          - target: x86_64-apple-darwin
+            runner: macos-13
+            cc: /usr/bin/clang
+            cxx: /usr/bin/clang++
+            os: macos
+          - target: aarch64-apple-darwin
+            runner: macos-14
+            cc: /usr/bin/clang
+            cxx: /usr/bin/clang++
+            os: macos
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install build deps (Linux native)
+        if: matrix.os == 'linux' && !matrix.cross
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libbotan-2-dev libjson-c-dev \
+            zlib1g-dev libbz2-dev cmake build-essential python3
+
+      - name: Install cross-compiler (Linux aarch64)
+        if: matrix.cross
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+            libbotan-2-dev libjson-c-dev zlib1g-dev libbz2-dev \
+            cmake build-essential python3 xz-utils
+
+      - name: Install build deps (macOS)
+        if: matrix.os == 'macos'
+        run: |
+          brew install botan json-c zlib bzip2 cmake
+
+      - name: Build Botan 3.6 (Linux)
+        if: matrix.os == 'linux'
+        run: |
+          cd $RUNNER_TEMP
+          curl -sLO https://botan.randombit.net/releases/Botan-3.6.0.tar.xz
+          tar xf Botan-3.6.0.tar.xz
+          cd Botan-3.6.0
+          python3 configure.py \
+            --prefix=$RUNNER_TEMP/botan-install \
+            --with-build-dir=$RUNNER_TEMP/botan-build \
+            --link-method=copy \
+            --cc=gcc --cc-bin=g++ \
+            --disable-modules=unsupported
+          make -f $RUNNER_TEMP/botan-build/Makefile -j$(nproc)
+          make -f $RUNNER_TEMP/botan-build/Makefile install
+
+      - name: Build json-c (Linux)
+        if: matrix.os == 'linux'
+        run: |
+          cd $RUNNER_TEMP
+          curl -sLO https://s3.amazonaws.com/json-c_releases/releases/json-c-0.17.tar.gz
+          tar xf json-c-0.17.tar.gz
+          cmake -S json-c-0.17 -B json-c-build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DBUILD_TESTING=OFF \
+            -DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/json-c-install
+          cmake --build json-c-build --parallel $(nproc)
+          cmake --install json-c-build
+
+      - name: Build librnp statically
+        run: |
+          cd $RUNNER_TEMP
+          curl -sLO https://github.com/rnpgp/rnp/releases/download/v0.18.1/rnp-v0.18.1.tar.gz
+          tar xf rnp-v0.18.1.tar.gz
+
+          BOTAN_PREFIX="$RUNNER_TEMP/botan-install"
+          JSONC_PREFIX="$RUNNER_TEMP/json-c-install"
+
+          if [ "${{ matrix.os }}" = "macos" ]; then
+            BOTAN_PREFIX="$(brew --prefix botan)"
+            JSONC_PREFIX="$(brew --prefix json-c)"
+            ZLIB_PREFIX="$(brew --prefix zlib)"
+            BZIP2_PREFIX="$(brew --prefix bzip2)"
+            PREFIX_PATH="$BOTAN_PREFIX;$JSONC_PREFIX;$ZLIB_PREFIX;$BZIP2_PREFIX"
+          else
+            ZLIB_PREFIX="/usr"
+            BZIP2_PREFIX="/usr"
+            PREFIX_PATH="$BOTAN_PREFIX;$JSONC_PREFIX;$ZLIB_PREFIX;$BZIP2_PREFIX"
+          fi
+
+          cmake -S rnp-v0.18.1 -B rnp-build \
+            -DCMAKE_C_COMPILER=${{ matrix.cc }} \
+            -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} \
+            -DCRYPTO_BACKEND=botan3 \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DBUILD_TESTING=OFF \
+            -DENABLE_DOC=OFF \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$PREFIX_PATH" \
+            -DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/rnp-install
+          cmake --build rnp-build --parallel $(nproc)
+          cmake --install rnp-build
+
+      - name: Collect artifacts
+        run: |
+          TARGET=${{ matrix.target }}
+          mkdir -p prebuilt/$TARGET/lib prebuilt/$TARGET/include/rnp
+
+          # librnp + libsexpp
+          cp $RUNNER_TEMP/rnp-install/lib/librnp.a prebuilt/$TARGET/lib/
+          cp $RUNNER_TEMP/rnp-install/lib/libsexpp.a prebuilt/$TARGET/lib/
+
+          # json-c
+          if [ "${{ matrix.os }}" = "macos" ]; then
+            cp $(brew --prefix json-c)/lib/libjson-c.a prebuilt/$TARGET/lib/
+          else
+            cp $RUNNER_TEMP/json-c-install/lib/libjson-c.a prebuilt/$TARGET/lib/
+          fi
+
+          # headers
+          cp $RUNNER_TEMP/rnp-install/include/rnp/*.h prebuilt/$TARGET/include/rnp/
+
+          echo "=== prebuilt/$TARGET ==="
+          find prebuilt/$TARGET -type f
+          du -sh prebuilt/$TARGET/lib/*.a
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: prebuilt-${{ matrix.target }}
+          path: prebuilt/${{ matrix.target }}/
+
+  commit:
+    name: Commit prebuilt libs
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: prebuilt-downloads
+          merge-multiple: false
+
+      - name: Assemble prebuilt directory
+        run: |
+          mkdir -p prebuilt
+          for dir in prebuilt-downloads/prebuilt-*; do
+            target=$(echo $dir | sed 's|prebuilt-downloads/prebuilt-||')
+            cp -r "$dir" "prebuilt/$target"
+          done
+          echo "=== All prebuilt targets ==="
+          find prebuilt -type f | sort
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b chore/prebuilt-update
+          git add prebuilt/
+          git commit -m "chore: update prebuilt static libraries for all platforms
+
+          Built via the prebuild-static-libs workflow.
+          Targets: x86_64-linux, aarch64-linux, x86_64-macos, aarch64-macos"
+          git push --force-with-lease origin chore/prebuilt-update
+
+      - name: Open PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: 'chore: update prebuilt static libraries for all platforms',
+              head: 'chore/prebuilt-update',
+              base: 'main',
+              body: 'Pre-built static librnp + json-c for all supported targets.'
+            });
