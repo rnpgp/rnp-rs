@@ -25,6 +25,13 @@ include = [
     "vendor/README.md",
 ]
 
+[package.metadata.docs.rs]
+# Build with all features so the PQC + crypto-refresh API surface appears
+# in the rendered docs. docs.rs ignores features whose build deps aren't
+# available, so this won't fail the doc build.
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 snafu = "0.8"
 

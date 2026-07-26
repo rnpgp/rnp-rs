@@ -53,9 +53,7 @@ jobs:
 
       - name: Install librnp (Linux)
         if: matrix.os == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y librnp-dev
+        uses: ./.github/actions/install-librnp
 
       - uses: actions/cache@v4
         with:
@@ -75,6 +73,8 @@ jobs:
         run: cargo test --no-fail-fast
 
       - name: cargo doc
+        env:
+          RUSTDOCFLAGS: -D warnings
         run: cargo doc --no-deps
 
   # ---------------------------------------------------------------------
@@ -91,9 +91,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.85.0
 
       - name: Install librnp
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y librnp-dev
+        uses: ./.github/actions/install-librnp
 
       - name: cargo build (MSRV)
         run: cargo build --all-targets
@@ -150,8 +148,8 @@ jobs:
     needs: typos
     runs-on: ubuntu-22.04
     env:
-      BOTAN_PREFIX: ${{ github.workspace }}/botan-3.6
-      RNP_PREFIX: ${{ github.workspace }}/rnp-install-pqc
+      BOTAN_PREFIX: ${{ runner.temp }}/rnp-deps/botan
+      RNP_PREFIX: ${{ runner.temp }}/rnp-deps/rnp
     steps:
       - uses: actions/checkout@v4
 
@@ -165,6 +163,8 @@ jobs:
 
       - name: Build Botan 3.6 with PQC
         run: |
+          mkdir -p $RUNNER_TEMP/rnp-deps
+          cd $RUNNER_TEMP
           curl -sLO https://botan.randombit.net/releases/Botan-3.6.0.tar.xz
           tar xf Botan-3.6.0.tar.xz
           cd Botan-3.6.0
@@ -173,11 +173,7 @@ jobs:
             --with-build-dir=$RUNNER_TEMP/botan-build \
             --link-method=copy \
             --cc=gcc --cc-bin=g++ \
-            --enable-modules=ml_kem,ml_dsa,slh_dsa_sha2,slh_dsa_shake,\
-ecdh,ecdsa,ed25519,ed448,x25519,x448,sm2,sm3,sm4,rsa,dsa,elgamal,\
-argon2,sha1,sha2_32,sha2_64,sha3,keccak,aes,chacha20poly1305,gcm,ocb,xts,\
-twofish,blowfish,cast128,camellia,idea,des,hmac,hmac_drbg,hkdf,pbkdf2,\
-pgp_s2k,auto_rng,system_rng,chacha_rng,ffi
+            --enable-modules=ml_kem,ml_dsa,slh_dsa_sha2,slh_dsa_shake,ecdh,ecdsa,ed25519,ed448,x25519,x448,sm2,sm3,sm4,rsa,dsa,elgamal,argon2,sha1,sha2_32,sha2_64,sha3,keccak,aes,chacha20poly1305,gcm,ocb,xts,twofish,blowfish,cast128,camellia,idea,des,hmac,hmac_drbg,hkdf,pbkdf2,pgp_s2k,auto_rng,system_rng,chacha_rng,ffi
           make -f $RUNNER_TEMP/botan-build/Makefile -j$(nproc)
           make -f $RUNNER_TEMP/botan-build/Makefile install
 
@@ -249,9 +245,7 @@ pgp_s2k,auto_rng,system_rng,chacha_rng,ffi
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install librnp
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y librnp-dev
+        uses: ./.github/actions/install-librnp
 
       - name: Install cargo-semver-checks
         run: cargo install cargo-semver-checks --locked
@@ -308,9 +302,7 @@ pgp_s2k,auto_rng,system_rng,chacha_rng,ffi
           components: miri
 
       - name: Install librnp
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y librnp-dev
+        uses: ./.github/actions/install-librnp
 
       - name: cargo miri (lib unit tests)
         env:
@@ -333,9 +325,7 @@ pgp_s2k,auto_rng,system_rng,chacha_rng,ffi
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install librnp
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y librnp-dev
+        uses: ./.github/actions/install-librnp
 
       - name: Install critcmp
         run: cargo install critcmp --locked || true
@@ -361,9 +351,7 @@ pgp_s2k,auto_rng,system_rng,chacha_rng,ffi
       - uses: dtolnay/rust-toolchain@beta
 
       - name: Install librnp
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y librnp-dev
+        uses: ./.github/actions/install-librnp
 
       - name: cargo build (beta)
         run: cargo build --all-targets
@@ -386,9 +374,7 @@ pgp_s2k,auto_rng,system_rng,chacha_rng,ffi
       - uses: dtolnay/rust-toolchain@nightly
 
       - name: Install librnp
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y librnp-dev
+        uses: ./.github/actions/install-librnp
 
       - name: cargo build (nightly)
         run: cargo build --all-targets || true
