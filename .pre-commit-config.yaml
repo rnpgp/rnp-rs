@@ -1,0 +1,45 @@
+# Pre-commit hooks for rnp-rs
+# Mirrors the CI checks in .github/workflows/ci.yml
+#
+# Usage:
+#   1. Install pre-commit: pip install pre-commit
+#   2. Install hooks: pre-commit install
+#   3. (Optional) Run on all files: pre-commit run --all-files
+#
+# Or use the shell hook directly:
+#   cp .githooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+
+repos:
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --all -- --check
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy --all-targets -- -D warnings
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: cargo-doc
+        name: cargo doc
+        entry: cargo doc --no-deps
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+  - repo: https://github.com/crate-ci/typos
+    rev: v1.45.0
+    hooks:
+      - id: typos
+
+  - repo: https://github.com/EmbarkStudios/cargo-deny
+    rev: 0.14.0
+    hooks:
+      - id: cargo-deny
+        args: ["--all-features", "check"]

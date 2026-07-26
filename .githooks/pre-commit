@@ -1,0 +1,70 @@
+#!/bin/bash
+#
+# Pre-commit hook for rnp-rs
+# Mirrors the CI checks in .github/workflows/ci.yml
+#
+# This hook runs:
+# - cargo fmt (format check)
+# - cargo clippy (lint with warnings as errors)
+# - cargo doc (documentation build)
+# - typos (spell check)
+# - cargo deny (license + advisory check)
+#
+# Installation:
+#   cp .githooks/pre-commit .git/hooks/pre-commit
+#   chmod +x .git/hooks/pre-commit
+#
+# Or use core.hooksPath:
+#   git config core.hooksPath .githooks
+#
+# To skip all checks temporarily:
+#   SKIP_PRECOMMIT=1 git commit -m "..."
+
+set -e
+
+if [ -n "$SKIP_PRECOMMIT" ] || [ -f .skip-precommit ]; then
+    echo "[pre-commit] skipped (SKIP_PRECOMMIT or .skip-precommit)"
+    exit 0
+fi
+
+# Cargo format check (fast)
+echo "[pre-commit] cargo fmt --check"
+if ! cargo fmt --all -- --check; then
+    echo "[pre-commit] FAIL: cargo fmt would reformat. Run 'cargo fmt --all' and re-stage."
+    exit 1
+fi
+
+# Clippy on default features
+echo "[pre-commit] cargo clippy"
+if ! cargo clippy --all-targets -- -D warnings >/dev/null 2>&1; then
+    echo "[pre-commit] FAIL: cargo clippy reported issues. Run 'cargo clippy --all-targets -- -D warnings' to see them."
+    exit 1
+fi
+
+# Documentation build (catches broken intra-doc links)
+echo "[pre-commit] cargo doc --no-deps"
+if ! cargo doc --no-deps >/dev/null 2>&1; then
+    echo "[pre-commit] FAIL: cargo doc reported errors."
+    exit 1
+fi
+
+# Spell check (if typos is installed)
+if command -v typos >/dev/null 2>&1; then
+    echo "[pre-commit] typos"
+    if ! typos >/dev/null 2>&1; then
+        echo "[pre-commit] FAIL: typos found spelling mistakes. Run 'typos' to see them."
+        exit 1
+    fi
+fi
+
+# License / advisory check (if cargo-deny is installed)
+if command -v cargo-deny >/dev/null 2>&1 || cargo deny --version >/dev/null 2>&1; then
+    echo "[pre-commit] cargo deny check"
+    if ! cargo deny check >/dev/null 2>&1; then
+        echo "[pre-commit] FAIL: cargo deny check reported issues."
+        exit 1
+    fi
+fi
+
+echo "[pre-commit] all checks passed"
+exit 0

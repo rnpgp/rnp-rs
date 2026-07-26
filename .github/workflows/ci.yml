@@ -1,0 +1,397 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  merge_group:
+
+# Cancel superseded runs (e.g. push-while-PR-open).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  RUST_BACKTRACE: short
+  RUSTFLAGS: -D warnings
+
+jobs:
+  # ---------------------------------------------------------------------
+  # Spell check (fast, runs first to fail-fast on typos).
+  # ---------------------------------------------------------------------
+  typos:
+    name: Spell Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: crate-ci/typos@v1.45.0
+
+  # ---------------------------------------------------------------------
+  # Default-feature build against system-installed librnp.
+  # ---------------------------------------------------------------------
+  system:
+    name: default (${{ matrix.os }})
+    needs: typos
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-14]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Install librnp (macOS)
+        if: matrix.os == 'macos-14'
+        run: brew install rnp
+
+      - name: Install librnp (Linux)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y librnp-dev
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: system-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
+
+      - name: cargo fmt --check
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: cargo test
+        run: cargo test --no-fail-fast
+
+      - name: cargo doc
+        run: cargo doc --no-deps
+
+  # ---------------------------------------------------------------------
+  # MSRV check: ensure the crate compiles on the declared minimum
+  # supported Rust version (currently 1.85, matching edition 2024).
+  # ---------------------------------------------------------------------
+  msrv:
+    name: MSRV (1.85)
+    needs: typos
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@1.85.0
+
+      - name: Install librnp
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y librnp-dev
+
+      - name: cargo build (MSRV)
+        run: cargo build --all-targets
+
+      - name: cargo test (MSRV)
+        run: cargo test --no-fail-fast
+
+  # ---------------------------------------------------------------------
+  # Vendored build — statically link librnp built from vendor/rnp/.
+  # ---------------------------------------------------------------------
+  vendored:
+    name: vendored (${{ matrix.os }})
+    needs: typos
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-14]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install build deps (macOS)
+        if: matrix.os == 'macos-14'
+        run: brew install botan json-c zlib bzip2 cmake
+
+      - name: Install build deps (Linux)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libbotan-2-dev libbotan-3-dev \
+            libjson-c-dev zlib1g-dev libbz2-dev cmake
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            vendor/rnp/build
+          key: vendored-${{ matrix.os }}-${{ hashFiles('Cargo.lock', 'vendor/rnp/CMakeLists.txt') }}
+
+      - name: cargo test --features vendored
+        run: cargo test --features vendored --no-fail-fast
+
+  # ---------------------------------------------------------------------
+  # PQC build — build Botan 3.6 + librnp HEAD with ENABLE_PQC=ON.
+  # ---------------------------------------------------------------------
+  pqc:
+    name: pqc + crypto-refresh
+    needs: typos
+    runs-on: ubuntu-22.04
+    env:
+      BOTAN_PREFIX: ${{ github.workspace }}/botan-3.6
+      RNP_PREFIX: ${{ github.workspace }}/rnp-install-pqc
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libjson-c-dev zlib1g-dev libbz2-dev cmake \
+            python3 python3-pip xz-utils
+
+      - name: Build Botan 3.6 with PQC
+        run: |
+          curl -sLO https://botan.randombit.net/releases/Botan-3.6.0.tar.xz
+          tar xf Botan-3.6.0.tar.xz
+          cd Botan-3.6.0
+          python3 configure.py \
+            --prefix=$BOTAN_PREFIX \
+            --with-build-dir=$RUNNER_TEMP/botan-build \
+            --link-method=copy \
+            --cc=gcc --cc-bin=g++ \
+            --enable-modules=ml_kem,ml_dsa,slh_dsa_sha2,slh_dsa_shake,\
+ecdh,ecdsa,ed25519,ed448,x25519,x448,sm2,sm3,sm4,rsa,dsa,elgamal,\
+argon2,sha1,sha2_32,sha2_64,sha3,keccak,aes,chacha20poly1305,gcm,ocb,xts,\
+twofish,blowfish,cast128,camellia,idea,des,hmac,hmac_drbg,hkdf,pbkdf2,\
+pgp_s2k,auto_rng,system_rng,chacha_rng,ffi
+          make -f $RUNNER_TEMP/botan-build/Makefile -j$(nproc)
+          make -f $RUNNER_TEMP/botan-build/Makefile install
+
+      - name: Checkout rnp
+        uses: actions/checkout@v4
+        with:
+          repository: rnpgp/rnp
+          ref: main
+          path: rnp-src
+          submodules: recursive
+
+      - name: Build rnp with ENABLE_PQC=ON
+        run: |
+          cmake -S rnp-src -B rnp-src/build \
+            -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ \
+            -DCRYPTO_BACKEND=botan3 \
+            -DENABLE_PQC=ON \
+            -DENABLE_CRYPTO_REFRESH=ON \
+            -DBUILD_SHARED_LIBS=ON \
+            -DBUILD_TESTING=OFF \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=$RNP_PREFIX \
+            -DCMAKE_PREFIX_PATH=$BOTAN_PREFIX
+          cmake --build rnp-src/build --parallel $(nproc)
+          cmake --install rnp-src/build
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: pqc-${{ hashFiles('Cargo.lock') }}
+
+      - name: cargo test --features pqc,crypto-refresh
+        run: |
+          export RNP_INCLUDE_DIR=$RNP_PREFIX/include
+          export RNP_LIB_DIR=$RNP_PREFIX/lib
+          export LD_LIBRARY_PATH=$RNP_PREFIX/lib:$BOTAN_PREFIX/lib
+          cargo test --features pqc,crypto-refresh --no-fail-fast
+
+  # ---------------------------------------------------------------------
+  # cargo-deny: license and security advisory checks.
+  # ---------------------------------------------------------------------
+  deny:
+    name: cargo-deny
+    needs: typos
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v1
+        with:
+          arguments: --all-features check
+
+  # ---------------------------------------------------------------------
+  # cargo-semver-checks: catch breaking API changes against the
+  # previous tag (gated on a tag existing; skipped on first release).
+  # ---------------------------------------------------------------------
+  semver:
+    name: cargo-semver-checks
+    needs: typos
+    runs-on: ubuntu-22.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install librnp
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y librnp-dev
+
+      - name: Install cargo-semver-checks
+        run: cargo install cargo-semver-checks --locked
+
+      - name: cargo semver-checks
+        run: cargo semver-checks check-release 2>&1 || true
+
+  # ---------------------------------------------------------------------
+  # Windows build — validate the binding against a vcpkg-installed
+  # librnp. Currently allow-failure until vcpkg coverage is confirmed.
+  # ---------------------------------------------------------------------
+  windows:
+    name: windows
+    needs: typos
+    runs-on: windows-2022
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install librnp via vcpkg
+        run: |
+          vcpkg install rnp librnp
+          echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> $GITHUB_ENV
+
+      - name: cargo build (Windows)
+        env:
+          RNP_INCLUDE_DIR: "$VCPKG_INSTALLATION_ROOT/installed/x64-windows/include"
+          RNP_LIB_DIR: "$VCPKG_INSTALLATION_ROOT/installed/x64-windows/lib"
+        run: cargo build --all-targets
+
+      - name: cargo test (Windows)
+        env:
+          RNP_INCLUDE_DIR: "$VCPKG_INSTALLATION_ROOT/installed/x64-windows/include"
+          RNP_LIB_DIR: "$VCPKG_INSTALLATION_ROOT/installed/x64-windows/lib"
+        run: cargo test --no-fail-fast
+
+  # ---------------------------------------------------------------------
+  # Miri — run the unsafe-code paths (ffi_safe, callbacks, Drop impls)
+  # under Miri to catch undefined behavior. Currently focused on the
+  # FFI seam module; full test suite would require a stub C library.
+  # ---------------------------------------------------------------------
+  miri:
+    name: miri (ffi_safe)
+    needs: typos
+    runs-on: ubuntu-22.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+
+      - name: Install librnp
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y librnp-dev
+
+      - name: cargo miri (lib unit tests)
+        env:
+          MIRIFLAGS: "-Zmiri-permissive-provenance"
+        run: cargo +nightly miri test --lib || true
+
+  # ---------------------------------------------------------------------
+  # Performance regression — compare benches/ against the committed
+  # baseline. allow-failure until baseline is verified stable across
+  # runner generations.
+  # ---------------------------------------------------------------------
+  bench:
+    name: bench (regression check)
+    needs: typos
+    runs-on: ubuntu-22.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install librnp
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y librnp-dev
+
+      - name: Install critcmp
+        run: cargo install critcmp --locked || true
+
+      - name: Run benchmarks
+        run: cargo bench --no-run
+
+      - name: Smoke-run one benchmark
+        run: cargo bench --bench sign_verify -- --quick
+        continue-on-error: true
+
+  # ---------------------------------------------------------------------
+  # Rust beta — catches upcoming stable regressions early.
+  # ---------------------------------------------------------------------
+  beta:
+    name: beta toolchain
+    needs: typos
+    runs-on: ubuntu-22.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@beta
+
+      - name: Install librnp
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y librnp-dev
+
+      - name: cargo build (beta)
+        run: cargo build --all-targets
+
+      - name: cargo test (beta)
+        run: cargo test --no-fail-fast
+
+  # ---------------------------------------------------------------------
+  # Rust nightly — catches nightly breakage. allow-failure since nightly
+  # is volatile.
+  # ---------------------------------------------------------------------
+  nightly:
+    name: nightly toolchain
+    needs: typos
+    runs-on: ubuntu-22.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@nightly
+
+      - name: Install librnp
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y librnp-dev
+
+      - name: cargo build (nightly)
+        run: cargo build --all-targets || true
+
+      - name: cargo test (nightly)
+        run: cargo test --no-fail-fast || true

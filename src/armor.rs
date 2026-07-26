@@ -4,9 +4,10 @@
 //! For streaming armor wrapping of an existing [`Output`], see
 //! [`crate::Output::to_armor`].
 
-use crate::error::{self, check, Result};
+use crate::error::{check, Result};
 use crate::ffi;
-use crate::ops::{cstr_to_optional_string, ArmorType, Input, Output};
+use crate::ffi_safe::call_for_optional_string;
+use crate::ops::{ArmorType, Input, Output};
 use std::ffi::CString;
 use std::ptr;
 
@@ -55,12 +56,10 @@ impl ContentType {
 /// Peek at `input` and report its likely content type. Does not consume the
 /// stream — the input is still usable for further calls.
 pub fn guess_contents(input: &Input) -> Result<ContentType> {
-    let mut raw: *mut std::os::raw::c_char = ptr::null_mut();
-    unsafe {
-        check(ffi::rnp_guess_contents(input.as_ptr(), &mut raw))?;
-        let s = cstr_to_optional_string(raw).unwrap_or_default();
-        Ok(ContentType::from_cstr(&s))
-    }
+    let s = call_for_optional_string(|out| unsafe {
+        ffi::rnp_guess_contents(input.as_ptr(), out)
+    })?;
+    Ok(ContentType::from_cstr(s.as_deref().unwrap_or("")))
 }
 
 /// Convenience: armor `bytes` and return the armored string.
@@ -81,4 +80,4 @@ pub fn dearmor_bytes(bytes: &[u8]) -> Result<Vec<u8>> {
 
 // Re-export the error type for convenience at the module boundary.
 #[allow(unused_imports)]
-use error as _error_reexport;
+use crate::error as _error_reexport;

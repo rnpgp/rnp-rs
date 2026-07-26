@@ -1,0 +1,38 @@
+# release-plz configuration for rnp-rs
+#
+# Auto-bumps version + regenerates CHANGELOG when conventional-commit
+# prefixes (feat:, fix:, etc.) land on main. The release PR is opened
+# automatically; merging it publishes to crates.io.
+#
+# See: https://release-plz.dev/docs/config
+
+[workspace]
+# Detect all workspace members automatically (we have one crate).
+# Enable GitHub releases (set to true once CI is wired).
+git_release_enable = false
+
+# Update dependencies with `cargo update` in the release PR.
+dependencies_update = true
+
+# Persist the release PR's branch name.
+allow-dirty = false
+
+# Changelog configuration.
+[changelog]
+# Group commits by their conventional-commit type.
+body = """
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | upper_first }}
+{% for commit in commits %}
+- {{ commit.message | upper_first }}\
+{% if commit.breaking %} (BREAKING){% endif %}\
+{% if commit.author != "github-actions[bot]" %} by @{{ commit.author }}{% endif %}\
+{% endfor %}
+{% endfor %}
+"""
+
+# Commit-message conventions:
+# - feat: minor version bump
+# - fix: patch version bump
+# - feat! or fix!: major version bump (breaking change)
+# - docs, chore, refactor, test: no version bump (changelog entry only)

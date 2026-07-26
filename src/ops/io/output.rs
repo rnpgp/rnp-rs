@@ -1,181 +1,12 @@
-//! RAII wrappers around `rnp_input_t` and `rnp_output_t`.
-//!
-//! Every byte-stream that crosses the Rust/C boundary in this crate goes
-//! through [`Input`] or [`Output`]. They own the underlying handle and free
-//! it on `Drop`, even on error paths reached via `?`. This eliminates the
-//! bespoke cleanup functions that previously appeared in `signature.rs` and
-//! the duplicated `drain_memory_output` helpers in `key.rs` /
-//! `signature.rs`.
-//!
-//! This module is also the only place in the crate that calls
-//! `rnp_buffer_destroy` — every C-allocated string or buffer returned to
-//! Rust is freed here, via [`cstr_to_string`] / [`cstr_to_optional_string`].
-//!
-//! ## Listener model
-//!
-//! Callback-based inputs and outputs are deferred to a later phase (they
-//! require careful lifetime design around boxed trait objects). Memory, path,
-//! stdin/stdout, file, null, and armor destinations are all supported here.
+//! [`Output`] — RAII wrapper around `rnp_output_t`, plus [`OutputFileFlags`].
 
 use crate::error::{self, check, Result};
 use crate::ffi;
-use std::ffi::{CStr, CString};
-use std::os::raw::c_char;
+use std::ffi::CString;
 use std::ptr;
 
-// ---------------------------------------------------------------------------
-// C-string / buffer return helpers
-// ---------------------------------------------------------------------------
-
-/// Convert a librnp-returned NUL-terminated string into an owned [`String`]
-/// and free the C buffer.
-///
-/// Returns `None` if `raw` is null. Use [`cstr_to_string`] when null is an
-/// error condition.
-///
-/// # Safety
-///
-/// `raw` must be either null or a pointer returned by librnp that the caller
-/// is responsible for freeing via `rnp_buffer_destroy`.
-pub unsafe fn cstr_to_optional_string(raw: *mut c_char) -> Option<String> {
-    if raw.is_null() {
-        return None;
-    }
-    // SAFETY: caller guarantees raw is a valid librnp-owned C string.
-    let s = unsafe { CStr::from_ptr(raw) }.to_string_lossy().into_owned();
-    unsafe { ffi::rnp_buffer_destroy(raw as *mut _) };
-    Some(s)
-}
-
-/// Like [`cstr_to_optional_string`] but treats null as an [`Error::NullPointer`].
-///
-/// # Safety
-///
-/// See [`cstr_to_optional_string`].
-pub unsafe fn cstr_to_string(raw: *mut c_char) -> Result<String> {
-    unsafe { cstr_to_optional_string(raw) }.ok_or(error::Error::NullPointer)
-}
-
-/// Run an FFI getter that writes a NUL-terminated string into an out-param,
-/// then convert the result to an owned [`String`] and free the buffer.
-///
-/// This is the canonical wrapper for the very common C-API shape
-/// `rnp_X_get_Y(handle, *mut *mut c_char) -> rnp_result_t`. Use it instead
-/// of repeating the `let mut raw: *mut c_char = ptr::null_mut(); check(...)?;
-/// cstr_to_string(raw)` triplet at every call site.
-///
-/// # Safety
-///
-/// `f` must populate the out-pointer with a librnp-allocated buffer that
-/// `rnp_buffer_destroy` can free.
-pub fn call_for_string<F>(mut f: F) -> Result<String>
-where
-    F: FnMut(*mut *mut c_char) -> u32,
-{
-    let mut raw: *mut c_char = ptr::null_mut();
-    let code = f(&mut raw);
-    check(code)?;
-    // SAFETY: the caller's closure populates `raw` per the FFI contract;
-    // cstr_to_string frees it via rnp_buffer_destroy.
-    unsafe { cstr_to_string(raw) }
-}
-
-/// Like [`call_for_string`] but maps `RNP_ERROR_NOT_FOUND` (and a null
-/// out-pointer) to `Ok(None)`. Use for getters that legitimately return
-/// "no value" rather than treating it as an error.
-pub fn call_for_optional_string<F>(mut f: F) -> Result<Option<String>>
-where
-    F: FnMut(*mut *mut c_char) -> u32,
-{
-    let mut raw: *mut c_char = ptr::null_mut();
-    let code = f(&mut raw);
-    if code == error::NOT_FOUND {
-        return Ok(None);
-    }
-    check(code)?;
-    // SAFETY: as above.
-    Ok(unsafe { cstr_to_optional_string(raw) })
-}
-
-// ---------------------------------------------------------------------------
-// Input
-// ---------------------------------------------------------------------------
-
-/// Owns an `rnp_input_t` for the lifetime of this value.
-///
-/// Construct with [`Input::from_memory`], [`Input::from_path`], or
-/// [`Input::from_stdin`]. Pass to higher-level operations via
-/// [`Input::as_ptr`].
-pub struct Input {
-    handle: ffi::rnp_input_t,
-}
-
-impl Input {
-    /// Wrap memory as an input. The bytes are copied on the C side, so the
-    /// caller's slice does not need to outlive the [`Input`].
-    pub fn from_memory(bytes: &[u8]) -> Result<Self> {
-        let mut handle: ffi::rnp_input_t = ptr::null_mut();
-        unsafe {
-            check(ffi::rnp_input_from_memory(
-                &mut handle,
-                bytes.as_ptr(),
-                bytes.len(),
-                true, // copy
-            ))?;
-        }
-        if handle.is_null() {
-            return Err(error::Error::NullPointer);
-        }
-        Ok(Input { handle })
-    }
-
-    /// Open a file at `path` for reading.
-    pub fn from_path(path: &str) -> Result<Self> {
-        let c = CString::new(path).map_err(|_| error::Error::PathNul)?;
-        let mut handle: ffi::rnp_input_t = ptr::null_mut();
-        unsafe {
-            check(ffi::rnp_input_from_path(&mut handle, c.as_ptr()))?;
-        }
-        if handle.is_null() {
-            return Err(error::Error::NullPointer);
-        }
-        Ok(Input { handle })
-    }
-
-    /// Read from process stdin.
-    pub fn from_stdin() -> Result<Self> {
-        let mut handle: ffi::rnp_input_t = ptr::null_mut();
-        unsafe {
-            check(ffi::rnp_input_from_stdin(&mut handle))?;
-        }
-        if handle.is_null() {
-            return Err(error::Error::NullPointer);
-        }
-        Ok(Input { handle })
-    }
-
-    /// Raw handle for passing to librnp functions. Crate-internal.
-    pub(crate) fn as_ptr(&self) -> ffi::rnp_input_t {
-        self.handle
-    }
-}
-
-impl Drop for Input {
-    fn drop(&mut self) {
-        if !self.handle.is_null() {
-            // SAFETY: handle was produced by rnp_input_from_* and not yet
-            // destroyed.
-            unsafe {
-                let _ = ffi::rnp_input_destroy(self.handle);
-            }
-            self.handle = ptr::null_mut();
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Output
-// ---------------------------------------------------------------------------
+use super::armor_type::ArmorType;
+use super::input::Input;
 
 /// Owns an `rnp_output_t` for the lifetime of this value.
 ///
@@ -206,33 +37,6 @@ impl std::ops::BitOr for OutputFileFlags {
     type Output = Self;
     fn bitor(self, rhs: Self) -> Self {
         Self(self.0 | rhs.0)
-    }
-}
-
-/// Armor stream type. See `rnp_enarmor()` for the canonical string values.
-#[derive(Clone, Copy, Debug)]
-pub enum ArmorType {
-    /// `"message"` — the default.
-    Message,
-    /// `"public key"`.
-    PublicKey,
-    /// `"secret key"`.
-    SecretKey,
-    /// `"signature"`.
-    Signature,
-    /// `"cleartext signed message"`.
-    Cleartext,
-}
-
-impl ArmorType {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            ArmorType::Message => "message",
-            ArmorType::PublicKey => "public key",
-            ArmorType::SecretKey => "secret key",
-            ArmorType::Signature => "signature",
-            ArmorType::Cleartext => "cleartext signed message",
-        }
     }
 }
 
@@ -345,9 +149,7 @@ impl Output {
     /// Override the default armor line length (76). Only meaningful when the
     /// output was created via [`Output::to_armor`].
     pub fn set_armor_line_length(&mut self, line_len: usize) -> Result<()> {
-        unsafe {
-            check(ffi::rnp_output_armor_set_line_length(self.handle, line_len))
-        }
+        unsafe { check(ffi::rnp_output_armor_set_line_length(self.handle, line_len)) }
     }
 
     /// Pipe `input` through to this output until EOF. Consumes neither.

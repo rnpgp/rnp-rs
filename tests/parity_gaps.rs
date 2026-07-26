@@ -2,10 +2,13 @@
 //! lifecycle, verify result, logging/key provider, buffer hygiene, misc
 //! getters.
 
-#![allow(deprecated)]
+
+
+mod common;
+use common::signing_key;
 
 use rnp::{
-    generate_test_key, request_password, Algorithm, Cipher, Context, Hash, KeyBuilder,
+    request_password, Algorithm, Cipher, Context, Hash, KeyBuilder,
     KeyIdentifier, KeyProvider, KeyRequestOutcome, KeyUsage, ProtectOptions,
     RequestedKeyType, SecretString, SubkeyBuilder, SubpacketType,
 };
@@ -15,7 +18,7 @@ use rnp::{
 #[test]
 fn uid_self_signature_has_key_flags() {
     let ctx = Context::new().expect("ctx");
-    let key = generate_test_key(&ctx, "selfsig <selfsig@example.com>").expect("key");
+    let key = signing_key(&ctx, "selfsig <selfsig@example.com>");
 
     let uids = key.uids().expect("uids");
     let uid = &uids[0];
@@ -31,7 +34,7 @@ fn uid_self_signature_has_key_flags() {
 #[test]
 fn uid_revocation_signature_none_when_not_revoked() {
     let ctx = Context::new().expect("ctx");
-    let key = generate_test_key(&ctx, "revoketest <rev@example.com>").expect("key");
+    let key = signing_key(&ctx, "revoketest <rev@example.com>");
     let uid = &key.uids().expect("uids")[0];
     assert!(!uid.is_revoked().unwrap());
     let rev = uid.revocation_signature().expect("call");
@@ -69,7 +72,7 @@ fn keygen_protection_at_generation_time() {
 #[test]
 fn signature_export_round_trips_via_dump() {
     let ctx = Context::new().expect("ctx");
-    let key = generate_test_key(&ctx, "siglife <siglife@example.com>").expect("key");
+    let key = signing_key(&ctx, "siglife <siglife@example.com>");
     let uid = &key.uids().expect("uids")[0];
     let sig = &uid.signatures().expect("sigs")[0];
 
@@ -88,7 +91,7 @@ fn signature_export_round_trips_via_dump() {
 #[test]
 fn signature_find_subpacket_keyflags() {
     let ctx = Context::new().expect("ctx");
-    let key = generate_test_key(&ctx, "findpkt <find@example.com>").expect("key");
+    let key = signing_key(&ctx, "findpkt <find@example.com>");
     let uid = &key.uids().expect("uids")[0];
     let sig = &uid.signatures().expect("sigs")[0];
 
@@ -117,7 +120,7 @@ fn subpacket_type_enum_round_trip() {
 #[test]
 fn verify_signature_handle_exposes_signer() {
     let ctx = Context::new().expect("ctx");
-    let key = generate_test_key(&ctx, "signer <signer@example.com>").expect("key");
+    let key = signing_key(&ctx, "signer <signer@example.com>");
 
     let plaintext = b"some bytes";
     let signed = rnp::sign(&ctx, plaintext, &key).expect("sign");
@@ -149,7 +152,7 @@ fn key_provider_callback_invoked() {
     // Use two contexts: one to generate + export a key, another to verify
     // a signature without the key in the keyring (so the provider fires).
     let setup_ctx = Context::new().expect("setup ctx");
-    let key = generate_test_key(&setup_ctx, "kp <kp@example.com>").expect("key");
+    let key = signing_key(&setup_ctx, "kp <kp@example.com>");
     let plaintext = b"kp-test";
     let sig = rnp::sign_detached(&setup_ctx, plaintext, &key).expect("sign detached");
     let pub_key_bytes = key
@@ -160,8 +163,8 @@ fn key_provider_callback_invoked() {
     let provider = StaticKeyProvider::new(pub_key_bytes);
     verify_ctx.set_key_provider(Box::new(provider));
 
-    let verified = rnp::verify_detached(&verify_ctx, plaintext, &sig).expect("verify");
-    assert!(verified, "key provider should have satisfied the lookup");
+    let result = rnp::verify_detached(&verify_ctx, plaintext, &sig).expect("verify");
+    assert!(result.any_valid().unwrap_or(false), "key provider should have satisfied the lookup");
 }
 
 struct StaticKeyProvider {
@@ -270,7 +273,7 @@ fn default_key_for_returns_subkey_for_encrypt_usage() {
 #[test]
 fn signature_signer_key_returns_primary_for_self_cert() {
     let ctx = Context::new().expect("ctx");
-    let key = generate_test_key(&ctx, "sig-key <sk@example.com>").expect("key");
+    let key = signing_key(&ctx, "sig-key <sk@example.com>");
     let uid = &key.uids().expect("uids")[0];
     let sig = &uid.signatures().expect("sigs")[0];
 

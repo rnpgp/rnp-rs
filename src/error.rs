@@ -299,6 +299,12 @@ pub enum Error {
     #[snafu(display("path contained an interior NUL byte"))]
     PathNul,
 
+    /// A string-to-enum conversion failed because the string doesn't
+    /// match any known variant. Surfaces from `FromStr` impls on the
+    /// model enums.
+    #[snafu(display("unknown {kind} variant: {value}"))]
+    UnknownVariant { kind: &'static str, value: String },
+
     /// An I/O operation at the Rust/C boundary failed.
     #[snafu(display("i/o error: {source}"))]
     Io { source: std::io::Error },
@@ -306,14 +312,12 @@ pub enum Error {
 
 impl Error {
     /// Coarse category of the failure, regardless of the underlying cause.
-    ///
-    /// Wrapper-level errors that don't correspond to an rnp result code return
-    /// a kind matching their nature (`NullPointer`, `NulByte` is `BadParameters`).
     pub fn kind(&self) -> ErrorKind {
         match self {
             Error::Rnp { kind, .. } => *kind,
             Error::NullPointer => ErrorKind::NullPointer,
             Error::NulByte | Error::PathNul => ErrorKind::BadParameters,
+            Error::UnknownVariant { .. } => ErrorKind::BadParameters,
             Error::Io { .. } => ErrorKind::Read,
         }
     }
@@ -327,6 +331,49 @@ impl Error {
     }
 }
 
+/// Construct an [`Error::Rnp`] from a raw `rnp_result_t` code, looking
+/// up its kind and message. Use when integrating with hand-written FFI
+/// bindings that return raw `u32` codes.
+pub fn from_rnp_code(code: u32) -> Error {
+    let kind = ErrorKind::from_code(code);
+    let message = result_to_string(code);
+    Error::Rnp { code, kind, message }
+}
+
+/// Construct an `Error::UnknownVariant`. Public so other modules (e.g.
+/// `strconv`) can raise it without depending on snafu internals.
+pub fn unknown_variant(kind: &'static str, value: impl Into<String>) -> Error {
+    Error::UnknownVariant {
+        kind,
+        value: value.into(),
+    }
+}
+
+/// Bridge `std::io::Error` into [`Error`] so `?` works at IO/FFI
+/// boundaries.
+impl From<std::io::Error> for Error {
+    fn from(source: std::io::Error) -> Self {
+        Error::Io { source }
+    }
+}
+
+/// Bridge [`Error`] into `std::io::Error` so `?` works when a caller is
+/// exposing an IO API on top of rnp-rs. The `io::Error`'s kind is
+/// derived from [`Error::kind`] where there's a sensible mapping.
+impl From<Error> for std::io::Error {
+    fn from(err: Error) -> Self {
+        let kind = match err.kind() {
+            ErrorKind::NotFound | ErrorKind::KeyNotFound => std::io::ErrorKind::NotFound,
+            ErrorKind::Access => std::io::ErrorKind::PermissionDenied,
+            ErrorKind::Eof => std::io::ErrorKind::UnexpectedEof,
+            ErrorKind::Write => std::io::ErrorKind::WriteZero,
+            ErrorKind::Read => std::io::ErrorKind::Other,
+            _ => std::io::ErrorKind::Other,
+        };
+        std::io::Error::new(kind, err)
+    }
+}
+
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Re-export of `RNP_SUCCESS` for other modules in this crate.
@@ -337,6 +384,7 @@ pub(crate) const NOT_FOUND: u32 = codes::RNP_ERROR_NOT_FOUND;
 
 /// Re-export of `RNP_ERROR_NO_SIGNATURES_FOUND` — used by the verify path
 /// when execute succeeded but no signature validated.
+#[allow(dead_code)]
 pub(crate) const NO_SIGNATURES_FOUND: u32 = codes::RNP_ERROR_NO_SIGNATURES_FOUND;
 
 /// Check an `rnp_result_t` return value; convert non-success into an
@@ -354,6 +402,7 @@ pub(crate) fn check(code: u32) -> Result<()> {
 /// Construct an [`Error::Rnp`] for [`NO_SIGNATURES_FOUND`] with a
 /// descriptive message. Used by the verify path when execute returned
 /// success but no signature in the message validated.
+#[allow(dead_code)]
 pub(crate) fn no_signatures_error() -> Error {
     Error::Rnp {
         code: NO_SIGNATURES_FOUND,

@@ -1,0 +1,54 @@
+[package]
+name = "rnp-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+rnp = { path = ".." }
+
+[[bin]]
+name = "decrypt"
+path = "fuzz_targets/decrypt.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "verify"
+path = "fuzz_targets/verify.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "load_keys"
+path = "fuzz_targets/load_keys.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "dump_packets"
+path = "fuzz_targets/dump_packets.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "dearmor"
+path = "fuzz_targets/dearmor.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "import_keys"
+path = "fuzz_targets/import_keys.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "signature_parse"
+path = "fuzz_targets/signature_parse.rs"
+test = false
+doc = false

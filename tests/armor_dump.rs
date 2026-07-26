@@ -1,9 +1,12 @@
 //! Phase 7: ASCII armor / dearmor / packet dumps.
 
-#![allow(deprecated)]
+
+
+mod common;
+use common::signing_key;
 
 use rnp::{
-    armor_bytes, dearmor_bytes, dump_packets_bytes_to_json, generate_test_key, ArmorType,
+    armor_bytes, dearmor_bytes, dump_packets_bytes_to_json, ArmorType,
     Context, DumpFlags, JsonDumpFlags, JsonFlags,
 };
 
@@ -21,7 +24,7 @@ fn armor_dearmor_roundtrip() {
 #[test]
 fn dump_packets_json_is_valid_json_object() {
     let ctx = Context::new().expect("ctx");
-    let key = generate_test_key(&ctx, "dumper <dumper@example.com>").expect("key");
+    let key = signing_key(&ctx, "dumper <dumper@example.com>");
     let exported = key
         .export(rnp::ExportFlags::PUBLIC)
         .expect("export public");
@@ -35,7 +38,7 @@ fn dump_packets_json_is_valid_json_object() {
 #[test]
 fn key_to_json_contains_keyid() {
     let ctx = Context::new().expect("ctx");
-    let key = generate_test_key(&ctx, "jsoner <jsoner@example.com>").expect("key");
+    let key = signing_key(&ctx, "jsoner <jsoner@example.com>");
     let json = key.to_json(JsonFlags::default()).expect("to_json");
     assert!(
         json.contains("\"keyid\""),
@@ -46,7 +49,7 @@ fn key_to_json_contains_keyid() {
 #[test]
 fn key_packets_to_json_returns_array() {
     let ctx = Context::new().expect("ctx");
-    let key = generate_test_key(&ctx, "packets <packets@example.com>").expect("key");
+    let key = signing_key(&ctx, "packets <packets@example.com>");
     let json = key
         .packets_to_json(false, JsonDumpFlags::default())
         .expect("packets_to_json");

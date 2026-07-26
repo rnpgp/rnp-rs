@@ -1,2 +1,18 @@
 /target
 Cargo.lock
+
+# Fuzz harness
+/fuzz/target
+/fuzz/corpus
+/fuzz/artifacts
+/fuzz/coverage
+tests/property.proptest-regressions
+
+# Local-only working notes — never push these
+/TODO.roadmap/
+/TODO*
+/BUGREPORT*
+*.tmp
+*.bak
+*.swp
+*~
