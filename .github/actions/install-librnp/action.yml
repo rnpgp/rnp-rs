@@ -1,0 +1,77 @@
+name: Install librnp 0.18.1
+description: Build Botan 3.6 + librnp 0.18.1 from source and export paths.
+
+inputs:
+  botan-modules:
+    description: Comma-separated list of Botan modules to enable
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Install build deps
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libjson-c-dev zlib1g-dev libbz2-dev \
+          cmake build-essential python3 curl
+
+    - name: Build Botan 3.6
+      shell: bash
+      run: |
+        BUILD_PREFIX="$RUNNER_TEMP/rnp-deps"
+        BOTAN_PREFIX="$BUILD_PREFIX/botan"
+        mkdir -p "$BUILD_PREFIX"
+        cd "$RUNNER_TEMP"
+        curl -sLO https://botan.randombit.net/releases/Botan-3.6.0.tar.xz
+        tar xf Botan-3.6.0.tar.xz
+        cd Botan-3.6.0
+        if [ -n "${{ inputs.botan-modules }}" ]; then
+          python3 configure.py \
+            --prefix="$BOTAN_PREFIX" \
+            --with-build-dir="$RUNNER_TEMP/botan-build" \
+            --link-method=copy \
+            --cc=gcc --cc-bin=g++ \
+            --enable-modules=${{ inputs.botan-modules }} \
+            --disable-modules=unsupported
+        else
+          python3 configure.py \
+            --prefix="$BOTAN_PREFIX" \
+            --with-build-dir="$RUNNER_TEMP/botan-build" \
+            --link-method=copy \
+            --cc=gcc --cc-bin=g++ \
+            --disable-modules=unsupported
+        fi
+        make -f "$RUNNER_TEMP/botan-build/Makefile" -j$(nproc)
+        make -f "$RUNNER_TEMP/botan-build/Makefile" install
+
+    - name: Build librnp 0.18.1
+      shell: bash
+      run: |
+        BUILD_PREFIX="$RUNNER_TEMP/rnp-deps"
+        BOTAN_PREFIX="$BUILD_PREFIX/botan"
+        RNP_PREFIX="$BUILD_PREFIX/rnp"
+        cd "$RUNNER_TEMP"
+        curl -sLO https://github.com/rnpgp/rnp/releases/download/v0.18.1/rnp-v0.18.1.tar.gz
+        tar xf rnp-v0.18.1.tar.gz
+        cmake -S rnp-v0.18.1 -B rnp-v0.18.1/build \
+          -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ \
+          -DCRYPTO_BACKEND=botan3 \
+          -DBUILD_SHARED_LIBS=ON \
+          -DBUILD_TESTING=OFF \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_INSTALL_PREFIX="$RNP_PREFIX" \
+          -DCMAKE_PREFIX_PATH="$BOTAN_PREFIX"
+        cmake --build rnp-v0.18.1/build --parallel $(nproc)
+        cmake --install rnp-v0.18.1/build
+
+    - name: Export librnp paths
+      shell: bash
+      run: |
+        BUILD_PREFIX="$RUNNER_TEMP/rnp-deps"
+        BOTAN_PREFIX="$BUILD_PREFIX/botan"
+        RNP_PREFIX="$BUILD_PREFIX/rnp"
+        echo "RNP_INCLUDE_DIR=$RNP_PREFIX/include" >> $GITHUB_ENV
+        echo "RNP_LIB_DIR=$RNP_PREFIX/lib" >> $GITHUB_ENV
+        echo "LD_LIBRARY_PATH=$RNP_PREFIX/lib:$BOTAN_PREFIX/lib" >> $GITHUB_ENV
