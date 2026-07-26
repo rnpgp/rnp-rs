@@ -12,6 +12,10 @@ are the detailed audit trail for each feature area.
 
 ### Other
 
+- Add prebuilt static libs for x86_64-unknown-linux-gnu ([#26](https://github.com/rnpgp/rnp-rs/pull/26)) by @[object]
+
+### Other
+
 - Update all GitHub Actions to latest stable versions ([#20](https://github.com/rnpgp/rnp-rs/pull/20)) by @[object]
 - Add rnp-sexp 0.1 from crates.io as dev-dependency ([#19](https://github.com/rnpgp/rnp-rs/pull/19)) by @[object]
 
