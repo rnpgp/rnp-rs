@@ -12,6 +12,11 @@ are the detailed audit trail for each feature area.
 
 ### Other
 
+- Release v0.1.4 ([#27](https://github.com/rnpgp/rnp-rs/pull/27)) by @[object]
+- Add prebuilt static libs for x86_64-unknown-linux-gnu ([#26](https://github.com/rnpgp/rnp-rs/pull/26)) by @[object]
+
+### Other
+
 - Add prebuilt static libs for x86_64-unknown-linux-gnu ([#26](https://github.com/rnpgp/rnp-rs/pull/26)) by @[object]
 
 ### Other
