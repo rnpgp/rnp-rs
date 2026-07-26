@@ -43,6 +43,7 @@ cmake = "0.1"
 proptest = "1"
 criterion = "0.5"
 sequoia-openpgp = { version = "2", default-features = false, features = ["crypto-rust", "compression-deflate", "allow-experimental-crypto", "allow-variable-time-crypto"] }
+rnp-sexp = "0.1"
 
 [[bench]]
 name = "sign_verify"
