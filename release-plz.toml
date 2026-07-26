@@ -14,9 +14,6 @@ git_release_enable = false
 # Update dependencies with `cargo update` in the release PR.
 dependencies_update = true
 
-# Persist the release PR's branch name.
-allow-dirty = false
-
 # Changelog configuration.
 [changelog]
 # Group commits by their conventional-commit type.
