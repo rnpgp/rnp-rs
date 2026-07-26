@@ -1,0 +1,9 @@
+#ifndef RNP_RNP_VER_H_
+#define RNP_RNP_VER_H_
+#define RNP_VERSION_NUMBER 0x001200
+#define RNP_VERSION_MAJOR 0
+#define RNP_VERSION_MINOR 18
+#define RNP_VERSION_PATCH 1
+#define RNP_VERSION_SUFFIX ""
+#define RNP_VERSION "0.18.1"
+#endif
