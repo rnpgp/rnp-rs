@@ -16,6 +16,26 @@ are the detailed audit trail for each feature area.
 
 ### Fixed
 
+- Inline build paths instead of step-level env ([#12](https://github.com/rnpgp/rnp-rs/pull/12)) by @[object]
+- Build librnp outside repo working tree ([#11](https://github.com/rnpgp/rnp-rs/pull/11)) by @[object]
+- Correct librnp tarball filename ([#10](https://github.com/rnpgp/rnp-rs/pull/10)) by @[object]
+- Build librnp 0.18.1 from source in release workflow ([#9](https://github.com/rnpgp/rnp-rs/pull/9)) by @[object]
+- Rename package to rnp-rs (lib name unchanged) ([#7](https://github.com/rnpgp/rnp-rs/pull/7)) by @[object]
+- Remove invalid allow-dirty field ([#4](https://github.com/rnpgp/rnp-rs/pull/4)) by @[object]
+
+### Other
+
+- Release v0.1.1 ([#5](https://github.com/rnpgp/rnp-rs/pull/5)) by @[object]
+- Remove TODO.roadmap/ from main ([#3](https://github.com/rnpgp/rnp-rs/pull/3)) by @[object]
+- Restructure src/ into focused submodules + add builders + remove threshold by @[object]
+- Expand API: full key management, encryption, error model ([#1](https://github.com/rnpgp/rnp-rs/pull/1)) by @[object]
+
+### Added
+
+- Initial Rust binding to RNP C FFI by @[object]
+
+### Fixed
+
 - Remove invalid allow-dirty field ([#4](https://github.com/rnpgp/rnp-rs/pull/4)) by @[object]
 
 ### Other
