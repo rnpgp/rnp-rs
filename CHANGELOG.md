@@ -10,6 +10,10 @@ are the detailed audit trail for each feature area.
 
 ## [Unreleased]
 
+### Other
+
+- Release v0.1.1 ([#13](https://github.com/rnpgp/rnp-rs/pull/13)) by @[object]
+
 ### Added
 
 - Initial Rust binding to RNP C FFI by @[object]
