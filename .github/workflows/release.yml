@@ -26,7 +26,7 @@ jobs:
     name: release-plz
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -101,7 +101,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -152,6 +152,6 @@ jobs:
       - name: cargo publish
         run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
