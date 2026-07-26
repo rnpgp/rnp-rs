@@ -12,6 +12,20 @@ are the detailed audit trail for each feature area.
 
 ### Added
 
+- Initial Rust binding to RNP C FFI by @[object]
+
+### Fixed
+
+- Remove invalid allow-dirty field ([#4](https://github.com/rnpgp/rnp-rs/pull/4)) by @[object]
+
+### Other
+
+- Remove TODO.roadmap/ from main ([#3](https://github.com/rnpgp/rnp-rs/pull/3)) by @[object]
+- Restructure src/ into focused submodules + add builders + remove threshold by @[object]
+- Expand API: full key management, encryption, error model ([#1](https://github.com/rnpgp/rnp-rs/pull/1)) by @[object]
+
+### Added
+
 - Idiomatic Rust binding to librnp's public C FFI (`include/rnp/rnp.h`).
 - Three signing modes: inline (`sign`), detached (`sign_detached`), and
   cleartext (`sign_cleartext`) with matching `verify` / `verify_detached`.
