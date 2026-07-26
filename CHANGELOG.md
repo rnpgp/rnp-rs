@@ -16,6 +16,22 @@ are the detailed audit trail for each feature area.
 
 ### Fixed
 
+- Rename package to rnp-rs (lib name unchanged) ([#7](https://github.com/rnpgp/rnp-rs/pull/7)) by @[object]
+- Remove invalid allow-dirty field ([#4](https://github.com/rnpgp/rnp-rs/pull/4)) by @[object]
+
+### Other
+
+- Release v0.1.1 ([#5](https://github.com/rnpgp/rnp-rs/pull/5)) by @[object]
+- Remove TODO.roadmap/ from main ([#3](https://github.com/rnpgp/rnp-rs/pull/3)) by @[object]
+- Restructure src/ into focused submodules + add builders + remove threshold by @[object]
+- Expand API: full key management, encryption, error model ([#1](https://github.com/rnpgp/rnp-rs/pull/1)) by @[object]
+
+### Added
+
+- Initial Rust binding to RNP C FFI by @[object]
+
+### Fixed
+
 - Remove invalid allow-dirty field ([#4](https://github.com/rnpgp/rnp-rs/pull/4)) by @[object]
 
 ### Other
