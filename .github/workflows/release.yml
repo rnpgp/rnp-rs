@@ -54,9 +54,9 @@ jobs:
 
       - name: Build librnp 0.18.1
         run: |
-          curl -sLO https://github.com/rnpgp/rnp/releases/download/v0.18.1/rnp-0.18.1.tar.gz
-          tar xf rnp-0.18.1.tar.gz
-          cmake -S rnp-0.18.1 -B rnp-0.18.1/build \
+          curl -sLO https://github.com/rnpgp/rnp/releases/download/v0.18.1/rnp-v0.18.1.tar.gz
+          tar xf rnp-v0.18.1.tar.gz
+          cmake -S rnp-v0.18.1 -B rnp-v0.18.1/build \
             -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ \
             -DCRYPTO_BACKEND=botan3 \
             -DBUILD_SHARED_LIBS=ON \
@@ -64,8 +64,8 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=$RNP_PREFIX \
             -DCMAKE_PREFIX_PATH=$BOTAN_PREFIX
-          cmake --build rnp-0.18.1/build --parallel $(nproc)
-          cmake --install rnp-0.18.1/build
+          cmake --build rnp-v0.18.1/build --parallel $(nproc)
+          cmake --install rnp-v0.18.1/build
 
       - name: Point rnp-rs at the locally-built librnp
         run: |
@@ -115,17 +115,17 @@ jobs:
           make -f $RUNNER_TEMP/botan-build/Makefile -j$(nproc)
           make -f $RUNNER_TEMP/botan-build/Makefile install
           cd ..
-          curl -sLO https://github.com/rnpgp/rnp/releases/download/v0.18.1/rnp-0.18.1.tar.gz
-          tar xf rnp-0.18.1.tar.gz
-          cmake -S rnp-0.18.1 -B rnp-0.18.1/build \
+          curl -sLO https://github.com/rnpgp/rnp/releases/download/v0.18.1/rnp-v0.18.1.tar.gz
+          tar xf rnp-v0.18.1.tar.gz
+          cmake -S rnp-v0.18.1 -B rnp-v0.18.1/build \
             -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ \
             -DCRYPTO_BACKEND=botan3 \
             -DBUILD_SHARED_LIBS=ON -DBUILD_TESTING=OFF \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=$RNP_PREFIX \
             -DCMAKE_PREFIX_PATH=$BOTAN_PREFIX
-          cmake --build rnp-0.18.1/build --parallel $(nproc)
-          cmake --install rnp-0.18.1/build
+          cmake --build rnp-v0.18.1/build --parallel $(nproc)
+          cmake --install rnp-v0.18.1/build
 
       - name: cargo test (system)
         env:
