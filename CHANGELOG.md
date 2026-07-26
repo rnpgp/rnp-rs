@@ -10,6 +10,16 @@ are the detailed audit trail for each feature area.
 
 ## [Unreleased]
 
+### Fixed
+
+- Composite librnp-build action + fix pqc YAML syntax + docs.rs metadata ([#16](https://github.com/rnpgp/rnp-rs/pull/16)) by @[object]
+
+### Other
+
+- Release v0.1.2 ([#14](https://github.com/rnpgp/rnp-rs/pull/14)) by @[object]
+- Translate README.adoc to README.md for crates.io ([#15](https://github.com/rnpgp/rnp-rs/pull/15)) by @[object]
+- Release v0.1.1 ([#13](https://github.com/rnpgp/rnp-rs/pull/13)) by @[object]
+
 ### Other
 
 - Release v0.1.1 ([#13](https://github.com/rnpgp/rnp-rs/pull/13)) by @[object]
