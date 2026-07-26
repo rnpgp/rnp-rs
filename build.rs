@@ -105,24 +105,14 @@ fn main() {
             println!("cargo:rustc-link-lib=dylib=rnp");
         }
         LinkMode::Vendored { static_lib_path } => {
-            // The cmake build produced a static librnp.a at this path. Tell
-            // rustc to link it statically. The path's parent is on the
-            // link-search path (added above as lib_dir).
             println!("cargo:rustc-link-lib=static=rnp");
-            // libsexpp is built alongside librnp as another static archive
-            // (it's rnp's bundled S-expression parser submodule).
             println!("cargo:rustc-link-lib=static=sexpp");
+            println!("cargo:rustc-link-lib=static=json-c");
             println!("cargo:rerun-if-changed={}", static_lib_path.display());
-            // Also link the transitive deps that cmake can't fold into the
-            // static archive (system frameworks and zlib on macOS, etc.).
-            // Find their install locations via Homebrew on macOS so the
-            // link succeeds without polluting RUSTFLAGS.
             add_system_link_search();
             println!("cargo:rustc-link-lib=dylib=botan-3");
-            println!("cargo:rustc-link-lib=dylib=json-c");
             println!("cargo:rustc-link-lib=dylib=z");
             println!("cargo:rustc-link-lib=dylib=bz2");
-            // librnp is C++; pull in the C++ runtime.
             if cfg!(target_os = "macos") {
                 println!("cargo:rustc-link-lib=dylib=c++");
             } else {
@@ -229,15 +219,36 @@ fn locate_librnp() -> (PathBuf, Option<PathBuf>, LinkMode) {
 // -----------------------------------------------------------------------
 
 #[cfg(feature = "vendored")]
-fn build_vendored() -> (PathBuf, PathBuf, PathBuf) {    let vendor_dir = PathBuf::from("vendor/rnp");
+fn build_vendored() -> (PathBuf, PathBuf, PathBuf) {
+    let target = std::env::var("TARGET").unwrap_or_default();
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap_or_default());
+    let prebuilt_dir = manifest_dir.join("prebuilt").join(&target);
+
+    let include_dir = prebuilt_dir.join("include");
+    let lib_dir = prebuilt_dir.join("lib");
+    let static_lib = lib_dir.join("librnp.a");
+
+    // Fallback: if no prebuilt dir for this target, try the old cmake-from-
+    // submodule path.
+    if !static_lib.exists() {
+        return build_vendored_from_source();
+    }
+
+    (include_dir, lib_dir, static_lib)
+}
+
+#[cfg(feature = "vendored")]
+fn build_vendored_from_source() -> (PathBuf, PathBuf, PathBuf) {
+    let vendor_dir = PathBuf::from("vendor/rnp");
     if !vendor_dir.join("CMakeLists.txt").exists() {
         panic!(
-            "vendored feature is enabled but `vendor/rnp/CMakeLists.txt` is \
-             missing. Initialize the submodule:\n  \
-             git submodule add https://github.com/rnpgp/rnp.git vendor/rnp\n  \
-             git -C vendor/rnp checkout v0.18.1\n  \
-             git -C vendor/rnp submodule update --init --recursive\n\
-             Or drop the `--features vendored` flag to use the system librnp."
+            "vendored feature is enabled but no prebuilt libs found for target {} and \
+             `vendor/rnp/CMakeLists.txt` is missing. Pre-built static libraries are \
+             available for: aarch64-apple-darwin. For other targets, initialize the \
+             submodule:\n  \
+             git submodule update --init --recursive\n\
+             Or drop the `--features vendored` flag to use the system librnp.",
+            std::env::var("TARGET").unwrap_or_default()
         );
     }
 
