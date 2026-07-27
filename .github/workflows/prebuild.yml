@@ -41,6 +41,14 @@ jobs:
           - { target: x86_64-unknown-linux-musl, runner: ubuntu-24.04, os: linux, backend: botan-minimal, libc: musl, container: alpine:latest }
           - { target: x86_64-unknown-linux-musl, runner: ubuntu-24.04, os: linux, backend: botan-pqc,     libc: musl, container: alpine:latest }
           - { target: x86_64-unknown-linux-musl, runner: ubuntu-24.04, os: linux, backend: openssl3,     libc: musl, container: alpine:latest }
+          # ---------- Windows (MSVC, x86_64 only for now) ----------
+          # Static libs produced as *.lib (not *.a). aarch64-pc-windows-msvc
+          # runner exists (windows-11-arm) but the MSVC ARM64 toolchain is
+          # still maturing — add in a follow-up.
+          - { target: x86_64-pc-windows-msvc, runner: windows-2022, os: windows, backend: botan-full,    libc: msvc }
+          - { target: x86_64-pc-windows-msvc, runner: windows-2022, os: windows, backend: botan-minimal, libc: msvc }
+          - { target: x86_64-pc-windows-msvc, runner: windows-2022, os: windows, backend: botan-pqc,     libc: msvc }
+          - { target: x86_64-pc-windows-msvc, runner: windows-2022, os: windows, backend: openssl3,     libc: msvc }
     steps:
       - uses: actions/checkout@v7
 
@@ -64,11 +72,28 @@ jobs:
         if: matrix.os == 'macos'
         run: brew install json-c zlib bzip2 cmake
 
+      - name: Install build deps (Windows)
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          # Visual Studio + CMake + Python + Git are pre-installed on
+          # windows-2022. We need: Perl (for OpenSSL Configure), NASM
+          # (for OpenSSL ASM), Ninja (faster builds).
+          choco install -y --no-progress perl nasm ninja
+          echo "C:\Program Files\NASM" >> $env:GITHUB_PATH
+          echo "C:\Program Files\Ninja" >> $env:GITHUB_PATH
+
+      - name: Setup MSVC developer environment
+        if: matrix.os == 'windows'
+        uses: ilammy/msvc-dev-shell@v1
+        with:
+          arch: x64
+
       # ---------------------------------------------------------------------
       # Backend: Botan (full or minimal module set)
       # ---------------------------------------------------------------------
-      - name: Build Botan 3.12 (static)
-        if: startsWith(matrix.backend, 'botan')
+      - name: Build Botan 3.12 (static, Unix)
+        if: startsWith(matrix.backend, 'botan') && matrix.os != 'windows'
         run: |
           cd $RUNNER_TEMP
           curl -sLO https://botan.randombit.net/releases/Botan-3.12.0.tar.xz
@@ -87,20 +112,13 @@ jobs:
           if [ "${{ matrix.backend }}" = "botan-minimal" ]; then
             MODULES_FLAG="--disable-modules=unsupported,tls,tls_10,tls_12,tls_13,dtls,http_client,sockets,sqlite3,boost,pkcs11,tpm2,ml_kem,ml_dsa,slh_dsa_sha2,slh_dsa_shake,sm2,sm3,sm4,twofish,blowfish,cast_128,idea,ed448,x448,ripemd_160,brainpool256r1,brainpool384r1,brainpool512r1"
           elif [ "${{ matrix.backend }}" = "botan-pqc" ]; then
-            # botan-full already includes everything; PQC modules are part
-            # of the default set in Botan 3.x. Just disable unsupported.
             MODULES_FLAG="--disable-modules=unsupported"
           else
             MODULES_FLAG="--disable-modules=unsupported"
           fi
 
-          # macOS: use Xcode clang explicitly (Homebrew LLVM 22 miscompiles
-          # BigInt at -O3 on ARM64). Linux: gcc/g++ on gnu, clang on musl
-          # (Alpine's default sysroot is clang-friendly).
           if [ "${{ matrix.os }}" = "macos" ]; then
             CC_FLAG="--cc=clang --cc-bin=/usr/bin/clang++"
-          elif [ "${{ matrix.libc }}" = "musl" ]; then
-            CC_FLAG="--cc=gcc --cc-bin=g++"
           else
             CC_FLAG="--cc=gcc --cc-bin=g++"
           fi
@@ -116,19 +134,43 @@ jobs:
           make -f $RUNNER_TEMP/botan-build/Makefile install
           du -sh $RUNNER_TEMP/botan-install/lib/libbotan-3.a
 
+      - name: Build Botan 3.12 (static, Windows)
+        if: startsWith(matrix.backend, 'botan') && matrix.os == 'windows'
+        shell: cmd
+        run: |
+          cd "%RUNNER_TEMP%"
+          curl -sLO https://botan.randombit.net/releases/Botan-3.12.0.tar.xz
+          tar xf Botan-3.12.0.tar.xz
+          cd Botan-3.12.0
+          if "${{ matrix.backend }}" == "botan-minimal" (
+            set MODULES_FLAG=--disable-modules=unsupported,tls,tls_10,tls_12,tls_13,dtls,http_client,sockets,sqlite3,boost,pkcs11,tpm2,ml_kem,ml_dsa,slh_dsa_sha2,slh_dsa_shake,sm2,sm3,sm4,twofish,blowfish,cast_128,idea,ed448,x448,ripemd_160,brainpool256r1,brainpool384r1,brainpool512r1
+          ) else (
+            set MODULES_FLAG=--disable-modules=unsupported
+          )
+          python configure.py ^
+            --prefix=%RUNNER_TEMP%\botan-install ^
+            --with-build-dir=%RUNNER_TEMP%\botan-build ^
+            --link-method=copy ^
+            --cc=msvc ^
+            --os=windows ^
+            --cpu=x86_64 ^
+            --disable-shared-library ^
+            %MODULES_FLAG%
+          nmake -f %RUNNER_TEMP%\botan-build\Makefile /NOCOLOR
+          nmake -f %RUNNER_TEMP%\botan-build\Makefile install
+          dir "%RUNNER_TEMP%\botan-install\lib"
+
       # ---------------------------------------------------------------------
       # Backend: OpenSSL 3.x
       # ---------------------------------------------------------------------
-      - name: Build OpenSSL 3.x (static)
-        if: matrix.backend == 'openssl3'
+      - name: Build OpenSSL 3.x (static, Unix)
+        if: matrix.backend == 'openssl3' && matrix.os != 'windows'
         run: |
           cd $RUNNER_TEMP
           curl -sLO https://github.com/openssl/openssl/releases/download/openssl-3.5.0/openssl-3.5.0.tar.gz
           tar xf openssl-3.5.0.tar.gz
           cd openssl-3.5.0
 
-          # OpenSSL's ./Configure takes target triples that encode both
-          # the OS and the CPU. Map our target -> OpenSSL target name.
           case "${{ matrix.target }}" in
             x86_64-apple-darwin)         OS_TARGET="darwin64-x86_64-cc" ;;
             aarch64-apple-darwin)        OS_TARGET="darwin64-arm64-cc" ;;
@@ -138,8 +180,6 @@ jobs:
 
           EXTRA_FLAGS=""
           if [ "${{ matrix.libc }}" = "musl" ]; then
-            # Perlasm has issues on aarch64-musl; no-asm sidesteps them at
-            # a ~2x performance cost for the affected primitives.
             EXTRA_FLAGS="no-asm"
           fi
 
@@ -150,18 +190,31 @@ jobs:
           make install_sw
           du -sh $RUNNER_TEMP/openssl-install/lib/libcrypto.a
 
+      - name: Build OpenSSL 3.x (static, Windows)
+        if: matrix.backend == 'openssl3' && matrix.os == 'windows'
+        shell: cmd
+        run: |
+          cd "%RUNNER_TEMP%"
+          curl -sLO https://github.com/openssl/openssl/releases/download/openssl-3.5.0/openssl-3.5.0.tar.gz
+          tar xf openssl-3.5.0.tar.gz
+          cd openssl-3.5.0
+          perl Configure VC-WIN64A no-shared no-tests no-apps no-asm ^
+            --prefix="%RUNNER_TEMP%\openssl-install" ^
+            --libdir=lib
+          nmake
+          nmake install_sw
+          dir "%RUNNER_TEMP%\openssl-install\lib"
+
       # ---------------------------------------------------------------------
       # Common deps: json-c, zlib, bzip2 (Linux only — macOS uses Homebrew)
       # ---------------------------------------------------------------------
-      - name: Build json-c (Linux only)
-        if: matrix.os == 'linux'
+      - name: Build json-c (Linux/macOS)
+        if: matrix.os != 'windows'
         run: |
           cd $RUNNER_TEMP
           curl -sLO https://s3.amazonaws.com/json-c_releases/releases/json-c-0.17.tar.gz
           tar xf json-c-0.17.tar.gz
 
-          # Alpine ships CMake 4.x, which dropped support for
-          # cmake_minimum_required < 3.5. json-c 0.17 declares 3.0.
           POLICY_FLAG=""
           if [ "${{ matrix.libc }}" = "musl" ]; then
             POLICY_FLAG="-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
@@ -176,7 +229,24 @@ jobs:
           cmake --build json-c-build --parallel $(nproc)
           cmake --install json-c-build
 
-      - name: Build zlib (static)
+      - name: Build json-c (Windows)
+        if: matrix.os == 'windows'
+        shell: cmd
+        run: |
+          cd "%RUNNER_TEMP%"
+          curl -sLO https://s3.amazonaws.com/json-c_releases/releases/json-c-0.17.tar.gz
+          tar xf json-c-0.17.tar.gz
+          cmake -S json-c-0.17 -B json-c-build ^
+            -G "Ninja" ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DBUILD_SHARED_LIBS=OFF ^
+            -DBUILD_TESTING=OFF ^
+            -DCMAKE_INSTALL_PREFIX="%RUNNER_TEMP%\json-c-install"
+          cmake --build json-c-build --parallel %NUMBER_OF_PROCESSORS%
+          cmake --install json-c-build
+
+      - name: Build zlib (static, Unix)
+        if: matrix.os != 'windows'
         run: |
           cd $RUNNER_TEMP
           curl -sLO https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz
@@ -195,7 +265,23 @@ jobs:
           cmake --build zlib-build --parallel $(nproc 2>/dev/null || sysctl -n hw.ncpu)
           cmake --install zlib-build
 
-      - name: Build bzip2 (static)
+      - name: Build zlib (static, Windows)
+        if: matrix.os == 'windows'
+        shell: cmd
+        run: |
+          cd "%RUNNER_TEMP%"
+          curl -sLO https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz
+          tar xf zlib-1.3.1.tar.gz
+          cmake -S zlib-1.3.1 -B zlib-build ^
+            -G "Ninja" ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DBUILD_SHARED_LIBS=OFF ^
+            -DCMAKE_INSTALL_PREFIX="%RUNNER_TEMP%\zlib-install"
+          cmake --build zlib-build --parallel %NUMBER_OF_PROCESSORS%
+          cmake --install zlib-build
+
+      - name: Build bzip2 (static, Unix)
+        if: matrix.os != 'windows'
         run: |
           cd $RUNNER_TEMP
           curl -sLO https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz
@@ -211,20 +297,28 @@ jobs:
           cp libbz2.a $RUNNER_TEMP/bzip2-install/lib/
           cp bzlib.h $RUNNER_TEMP/bzip2-install/include/
 
+      - name: Build bzip2 (static, Windows)
+        if: matrix.os == 'windows'
+        shell: cmd
+        run: |
+          cd "%RUNNER_TEMP%"
+          curl -sLO https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz
+          tar xf bzip2-1.0.8.tar.gz
+          cd bzip2-1.0.8
+          # Build libbz2.lib using the provided makefile.msc
+          nmake -f makefile.msc libbz2.lib
+          mkdir "%RUNNER_TEMP%\bzip2-install\lib" "%RUNNER_TEMP%\bzip2-install\include"
+          copy libbz2.lib "%RUNNER_TEMP%\bzip2-install\lib\"
+          copy bzlib.h "%RUNNER_TEMP%\bzip2-install\include\"
+
       # ---------------------------------------------------------------------
       # librnp — built against the selected backend.
       # ---------------------------------------------------------------------
-      - name: Build librnp statically
+      - name: Build librnp statically (Unix)
+        if: matrix.os != 'windows'
         run: |
           cd $RUNNER_TEMP
           if [ "${{ matrix.backend }}" = "botan-pqc" ]; then
-            # PQC support is not in the librnp 0.18.1 release tarball
-            # (incomplete EC_Group type errors against Botan 3.12). Pull
-            # HEAD of rnpgp/rnp main instead. Once librnp 0.19.x ships,
-            # switch back to the release tarball.
-            # --recurse-submodules: sexpp is a submodule; without it
-            # cmake dies with "install TARGETS given target 'sexpp'
-            # which does not exist".
             git clone --depth 1 --recurse-submodules --shallow-submodules \
               https://github.com/rnpgp/rnp.git rnp-src
             RNP_SRCDIR="$RUNNER_TEMP/rnp-src"
@@ -234,18 +328,9 @@ jobs:
             RNP_SRCDIR="$RUNNER_TEMP/rnp-v0.18.1"
           fi
 
-          # botan-pqc: librnp HEAD references Botan types without the
-          # corresponding #include directives (incomplete-type errors).
-          # Patch each affected file individually — a global -include
-          # via CMAKE_CXX_FLAGS breaks CMake's try-compile checks which
-          # run before the Botan include path is set up.
           if [ "${{ matrix.backend }}" = "botan-pqc" ]; then
-            # ec.cpp: uses Botan::EC_Group::from_name. Has <botan/ffi.h>.
             perl -i -pe 's/#include <botan\/ffi\.h>/#include <botan\/ffi.h>\n#include <botan\/ec_group.h>/' \
               "$RNP_SRCDIR/src/lib/crypto/ec.cpp"
-            # exdsa_ecdhkem.cpp: uses EC_Group, BigInt, EC_AffinePoint.
-            # Has no <botan/*> includes — prepend before any #include.
-            # Note: EC_AffinePoint is in <botan/ec_apoint.h>, not ec_point.h.
             printf '%s\n' \
               '#include <botan/ec_group.h>' \
               '#include <botan/bigint.h>' \
@@ -259,7 +344,6 @@ jobs:
           ZLIB_PREFIX="$RUNNER_TEMP/zlib-install"
           BZIP2_PREFIX="$RUNNER_TEMP/bzip2-install"
 
-          # Pick the backend prefix and CMake value.
           case "${{ matrix.backend }}" in
             botan-full|botan-minimal|botan-pqc)
               CRYPTO_BACKEND=botan3
@@ -271,9 +355,6 @@ jobs:
               ;;
           esac
 
-          # botan-pqc builds librnp with ENABLE_PQC=ON and
-          # ENABLE_CRYPTO_REFRESH=ON so ML-KEM/ML-DSA/SLH-DSA and v6 keys
-          # are exposed in the resulting librnp.a.
           EXTRA_RNP_FLAGS=""
           if [ "${{ matrix.backend }}" = "botan-pqc" ]; then
             EXTRA_RNP_FLAGS="-DENABLE_PQC=ON -DENABLE_CRYPTO_REFRESH=ON"
@@ -311,13 +392,67 @@ jobs:
           cmake --build rnp-build --parallel $(nproc 2>/dev/null || sysctl -n hw.ncpu)
           cmake --install rnp-build
 
+      - name: Build librnp statically (Windows)
+        if: matrix.os == 'windows'
+        shell: cmd
+        run: |
+          cd "%RUNNER_TEMP%"
+          if "${{ matrix.backend }}" == "botan-pqc" (
+            git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/rnpgp/rnp.git rnp-src
+            set RNP_SRCDIR=%RUNNER_TEMP%\rnp-src
+          ) else (
+            curl -sLO https://github.com/rnpgp/rnp/releases/download/v0.18.1/rnp-v0.18.1.tar.gz
+            tar xf rnp-v0.18.1.tar.gz
+            set RNP_SRCDIR=%RUNNER_TEMP%\rnp-v0.18.1
+          )
+
+          set ZLIB_PREFIX=%RUNNER_TEMP%\zlib-install
+          set BZIP2_PREFIX=%RUNNER_TEMP%\bzip2-install
+
+          if "${{ matrix.backend }}" == "botan-full" (
+            set CRYPTO_BACKEND=botan3
+            set CRYPTO_PREFIX=%RUNNER_TEMP%\botan-install
+          ) else if "${{ matrix.backend }}" == "botan-minimal" (
+            set CRYPTO_BACKEND=botan3
+            set CRYPTO_PREFIX=%RUNNER_TEMP%\botan-install
+          ) else if "${{ matrix.backend }}" == "botan-pqc" (
+            set CRYPTO_BACKEND=botan3
+            set CRYPTO_PREFIX=%RUNNER_TEMP%\botan-install
+          ) else if "${{ matrix.backend }}" == "openssl3" (
+            set CRYPTO_BACKEND=openssl
+            set CRYPTO_PREFIX=%RUNNER_TEMP%\openssl-install
+          )
+
+          set EXTRA_RNP_FLAGS=
+          if "${{ matrix.backend }}" == "botan-pqc" (
+            set EXTRA_RNP_FLAGS=-DENABLE_PQC=ON -DENABLE_CRYPTO_REFRESH=ON
+          )
+
+          set JSONC_PREFIX=%RUNNER_TEMP%\json-c-install
+          set PREFIX_PATH=%CRYPTO_PREFIX%;%JSONC_PREFIX%;%ZLIB_PREFIX%;%BZIP2_PREFIX%
+
+          cmake -S "%RNP_SRCDIR%" -B rnp-build ^
+            -G "Ninja" ^
+            -DCRYPTO_BACKEND=%CRYPTO_BACKEND% ^
+            -DBUILD_SHARED_LIBS=OFF ^
+            -DBUILD_TESTING=OFF ^
+            -DENABLE_DOC=OFF ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DCMAKE_PREFIX_PATH="%PREFIX_PATH%" ^
+            %EXTRA_RNP_FLAGS% ^
+            -DCMAKE_INSTALL_PREFIX=%RUNNER_TEMP%\rnp-install
+          cmake --build rnp-build --parallel %NUMBER_OF_PROCESSORS%
+          cmake --install rnp-build
+          dir "%RUNNER_TEMP%\rnp-install\lib"
+
       # ---------------------------------------------------------------------
       # Collect artifacts. Destination layout:
       #   prebuilt/<target>[-<backend-suffix>]/
       # where the suffix is empty for botan-full, otherwise -minimal /
       # -openssl3.
       # ---------------------------------------------------------------------
-      - name: Collect artifacts
+      - name: Collect artifacts (Unix)
+        if: matrix.os != 'windows'
         run: |
           TARGET=${{ matrix.target }}
           BACKEND=${{ matrix.backend }}
@@ -342,7 +477,6 @@ jobs:
           cp $RUNNER_TEMP/zlib-install/lib/libz.a $DEST/lib/
           cp $RUNNER_TEMP/bzip2-install/lib/libbz2.a $DEST/lib/
 
-          # Bundle the backend's static crypto library.
           case "$BACKEND" in
             botan-full|botan-minimal|botan-pqc)
               cp $RUNNER_TEMP/botan-install/lib/libbotan-3.a $DEST/lib/
@@ -358,6 +492,42 @@ jobs:
           echo "=== $DEST ==="
           find $DEST -type f
           du -sh $DEST/lib/*.a
+
+      - name: Collect artifacts (Windows)
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          $target = "${{ matrix.target }}"
+          $backend = "${{ matrix.backend }}"
+          $suffix = switch ($backend) {
+            "botan-full"    { "" }
+            "botan-minimal" { "-minimal" }
+            "botan-pqc"     { "-pqc" }
+            "openssl3"      { "-openssl3" }
+          }
+          $dest = "prebuilt/$target$suffix"
+          New-Item -ItemType Directory -Force -Path "$dest/lib", "$dest/include/rnp" | Out-Null
+
+          # On Windows static libs are *.lib (no leading "lib" prefix).
+          Copy-Item "$env:RUNNER_TEMP/rnp-install/lib/rnp.lib"   "$dest/lib/"
+          Copy-Item "$env:RUNNER_TEMP/rnp-install/lib/sexpp.lib" "$dest/lib/"
+          Copy-Item "$env:RUNNER_TEMP/json-c-install/lib/json-c.lib" "$dest/lib/"
+          Copy-Item "$env:RUNNER_TEMP/zlib-install/lib/zlibstatic.lib" "$dest/lib/z.lib"
+          Copy-Item "$env:RUNNER_TEMP/bzip2-install/lib/libbz2.lib" "$dest/lib/bz2.lib"
+
+          switch ($backend) {
+            { $_ -in "botan-full", "botan-minimal", "botan-pqc" } {
+              Copy-Item "$env:RUNNER_TEMP/botan-install/lib/botan-3.lib" "$dest/lib/"
+            }
+            "openssl3" {
+              Copy-Item "$env:RUNNER_TEMP/openssl-install/lib/libcrypto.lib" "$dest/lib/crypto.lib"
+              Copy-Item "$env:RUNNER_TEMP/openssl-install/lib/libssl.lib" "$dest/lib/ssl.lib"
+            }
+          }
+
+          Copy-Item "$env:RUNNER_TEMP/rnp-install/include/rnp/*.h" "$dest/include/rnp/"
+          Write-Host "=== $dest ==="
+          Get-ChildItem -Recurse $dest | Select-Object FullName
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

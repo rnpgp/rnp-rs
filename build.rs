@@ -308,7 +308,12 @@ fn build_vendored() -> (PathBuf, PathBuf, PathBuf) {
 
     let include_dir = prebuilt_dir.join("include");
     let lib_dir = prebuilt_dir.join("lib");
-    let static_lib = lib_dir.join("librnp.a");
+    // Windows MSVC produces `rnp.lib`; Unix produces `librnp.a`.
+    let static_lib = if cfg!(target_env = "msvc") {
+        lib_dir.join("rnp.lib")
+    } else {
+        lib_dir.join("librnp.a")
+    };
 
     // Fallback: if no prebuilt dir for this target, try the old cmake-from-
     // submodule path.
