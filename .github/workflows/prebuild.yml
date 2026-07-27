@@ -229,7 +229,13 @@ jobs:
       contents: write
       pull-requests: write
     steps:
+      # Always branch off main, NOT the dispatching branch. Otherwise the
+      # `chore/prebuilt-update` push carries workflow-file edits from the
+      # feature branch, which the default GITHUB_TOKEN can't push without
+      # `workflows` permission.
       - uses: actions/checkout@v7
+        with:
+          ref: main
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
