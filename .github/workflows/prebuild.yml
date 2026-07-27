@@ -239,15 +239,20 @@ jobs:
           # via CMAKE_CXX_FLAGS breaks CMake's try-compile checks which
           # run before the Botan include path is set up.
           if [ "${{ matrix.backend }}" = "botan-pqc" ]; then
-            # ec.cpp uses Botan::EC_Group::from_name
+            # ec.cpp: uses Botan::EC_Group::from_name. Has <botan/ffi.h>.
             perl -i -pe 's/#include <botan\/ffi\.h>/#include <botan\/ffi.h>\n#include <botan\/ec_group.h>/' \
               "$RNP_SRCDIR/src/lib/crypto/ec.cpp"
-            # exdsa_ecdhkem.cpp uses EC_Group, BigInt, EC_AffinePoint
-            perl -i -pe 's/#include <botan\/ffi\.h>/#include <botan\/ffi.h>\n#include <botan\/ec_group.h>\n#include <botan\/bigint.h>\n#include <botan\/ec_point.h>/' \
-              "$RNP_SRCDIR/src/lib/crypto/exdsa_ecdhkem.cpp" 2>/dev/null || true
-            # elgamal.cpp uses BigInt
-            perl -i -pe 's/#include <botan\/ffi\.h>/#include <botan\/ffi.h>\n#include <botan\/bigint.h>/' \
-              "$RNP_SRCDIR/src/lib/crypto/elgamal.cpp" 2>/dev/null || true
+            # exdsa_ecdhkem.cpp: uses EC_Group, BigInt, EC_AffinePoint.
+            # Has no <botan/*> includes — prepend before any #include.
+            printf '%s\n' \
+              '#include <botan/ec_group.h>' \
+              '#include <botan/bigint.h>' \
+              '#include <botan/ec_point.h>' \
+              '#include <botan/ec_h2c.h>' \
+              > /tmp/botan-includes.h
+            cat /tmp/botan-includes.h "$RNP_SRCDIR/src/lib/crypto/exdsa_ecdhkem.cpp" \
+              > /tmp/exdsa-new.cpp
+            mv /tmp/exdsa-new.cpp "$RNP_SRCDIR/src/lib/crypto/exdsa_ecdhkem.cpp"
           fi
 
           ZLIB_PREFIX="$RUNNER_TEMP/zlib-install"
