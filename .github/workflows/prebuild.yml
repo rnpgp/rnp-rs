@@ -248,7 +248,11 @@ jobs:
             # (incomplete EC_Group type errors against Botan 3.12). Pull
             # HEAD of rnpgp/rnp main instead. Once librnp 0.19.x ships,
             # switch back to the release tarball.
-            git clone --depth 1 https://github.com/rnpgp/rnp.git rnp-src
+            # --recurse-submodules: sexpp is a submodule; without it
+            # cmake dies with "install TARGETS given target 'sexpp'
+            # which does not exist".
+            git clone --depth 1 --recurse-submodules --shallow-submodules \
+              https://github.com/rnpgp/rnp.git rnp-src
             RNP_SRCDIR="$RUNNER_TEMP/rnp-src"
           else
             curl -sLO https://github.com/rnpgp/rnp/releases/download/v0.18.1/rnp-v0.18.1.tar.gz
@@ -265,11 +269,21 @@ jobs:
           # Use perl instead of sed because BSD sed (macOS) and GNU sed
           # have incompatible -i syntax.
           if [ "${{ matrix.backend }}" = "libressl" ]; then
+            # Patch 1: findopensslfeatures.c uses EVP_PKEY_meth_* (internal
+            # OpenSSL API). Swap for the public EVP_PKEY_asn1_* counterpart.
             perl -i -pe '
               s/EVP_PKEY_meth_get_count/EVP_PKEY_asn1_get_count/g;
               s/const EVP_PKEY_METHOD \*pmeth = EVP_PKEY_meth_get0/const EVP_PKEY_ASN1_METHOD *ameth = EVP_PKEY_asn1_get0/g;
               s/EVP_PKEY_meth_get0_info\(&id, NULL, pmeth\)/EVP_PKEY_asn1_get0_info(\&id, NULL, NULL, NULL, NULL, ameth)/g;
             ' "$RNP_SRCDIR/cmake/Modules/findopensslfeatures.c"
+
+            # Patch 2: librnp's CMakeLists.txt mandates AES-128-OCB /
+            # AES-192-OCB / AES-256-OCB. LibreSSL doesn't ship OCB mode.
+            # Drop those three lines from _openssl_required_features.
+            # AEAD EAX (which LibreSSL has) remains — ENABLE_AEAD will
+            # turn off via the resolve_feature_state call, but the build
+            # won't fail outright.
+            perl -i -ne 'print unless /^\s*AES-\d+-OCB/' "$RNP_SRCDIR/src/lib/CMakeLists.txt"
           fi
 
           ZLIB_PREFIX="$RUNNER_TEMP/zlib-install"
