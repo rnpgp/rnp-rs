@@ -57,7 +57,8 @@ jobs:
           apk add --no-cache \
             build-base cmake python3 curl xz perl \
             json-c-dev zlib-dev bzip2-dev \
-            linux-headers
+            linux-headers \
+            git
 
       - name: Install build deps (macOS)
         if: matrix.os == 'macos'
