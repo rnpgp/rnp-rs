@@ -109,10 +109,9 @@ fn main() {
             println!("cargo:rustc-link-lib=static=sexpp");
             println!("cargo:rustc-link-lib=static=json-c");
             println!("cargo:rustc-link-lib=static=botan-3");
+            println!("cargo:rustc-link-lib=static=z");
+            println!("cargo:rustc-link-lib=static=bz2");
             println!("cargo:rerun-if-changed={}", static_lib_path.display());
-            add_system_link_search();
-            println!("cargo:rustc-link-lib=dylib=z");
-            println!("cargo:rustc-link-lib=dylib=bz2");
             if cfg!(target_os = "macos") {
                 println!("cargo:rustc-link-lib=dylib=c++");
             } else {
