@@ -52,7 +52,7 @@ static_assert(RNP_VERSION_MAJOR <= RNP_VERSION_COMPONENT_MASK &&
 
 /* Crypto backend as it was used during the build */
 #define RNP_BACKEND "botan"
-#define RNP_BACKEND_VERSION "3.6.0"
+#define RNP_BACKEND_VERSION "3.12.0"
 
 /* Enabled RNP features: will be appended by CMake */
 #define RNP_HAS_AEAD 1
