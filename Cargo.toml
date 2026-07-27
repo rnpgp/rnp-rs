@@ -64,6 +64,14 @@ default = []
 # Build librnp from a vendored git submodule of the `rnp` C++ project. See
 # TODO.roadmap/10-vendored-build.md.
 vendored = []
+# Implies `vendored`. Selects the minimal prebuilt variant — Botan built
+# with --minimized-build, only the algorithms required for modern RFC 9580
+# OpenPGP (RSA, ECDSA, ECDH, Ed25519, X25519, AES, SHA-1/2/3,
+# ChaCha20-Poly1305, GCM, OCB, Argon2, HMAC/HKDF/PBKDF2). Drops PQC,
+# Chinese crypto (SM2/3/4), legacy symmetric ciphers (Twofish/Blowfish/
+# CAST5/Camellia/IDEA/3DES), and rare curves (Ed448/X448). Incompatible
+# with the `pqc` feature (build.rs emits a compile_error!).
+vendored-minimal = ["vendored"]
 # Pass -DRNP_EXPERIMENTAL_PQC to bindgen so the PQC algorithm constants and
 # `rnp_op_encrypt_prefer_pqc_enc_subkey` are picked up. Requires the linked
 # librnp to have been built with ENABLE_PQC=ON (Botan 3 + ENABLE_PQC).
