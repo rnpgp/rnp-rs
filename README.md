@@ -20,7 +20,8 @@ support is feature-gated. MSRV is **Rust 1.88** (let-chains in
 
 | Feature          | Default | Description                                                                                                                                                          |
 |------------------|---------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `vendored`       | off     | Statically link the bundled `librnp.a` + `libsexpp.a` + `libjson-c.a` + `libbotan-3.a` from `prebuilt/<target>/`. Fully self-contained — no system crypto deps.                                 |
+| `vendored`       | off     | Statically link the bundled `librnp.a` + `libsexpp.a` + `libjson-c.a` + `libbotan-3.a` + `libz.a` + `libbz2.a` from `prebuilt/<target>/`. Fully self-contained — no system crypto deps. |
+| `vendored-minimal` | off   | Implies `vendored`. Selects the minimal Botan variant — only RFC 9580 essentials (RSA/ECDSA/ECDH/Ed25519/X25519, AES, SHA-1/2/3, ChaCha20-Poly1305, GCM, OCB, Argon2). ~30-40% smaller than full `vendored`. Incompatible with `pqc`. |
 | `pqc`            | off     | Pass `-DRNP_EXPERIMENTAL_PQC` to bindgen so PQC algorithm constants and `Encryptor::prefer_pqc_enc_subkey` are exposed. Requires librnp built with `ENABLE_PQC=ON`. |
 | `crypto-refresh` | off     | Pass `-DRNP_EXPERIMENTAL_CRYPTO_REFRESH` to bindgen so v6 keys, crypto-refresh algorithm names, and v6 PKESK/SKESK are exposed.                                       |
 | `logging`        | off     | Gate `Context::set_log_fd` / `set_log_file` for directing librnp's diagnostic output.                                                                                |
@@ -433,15 +434,32 @@ cargo build
 ### Vendored (no system librnp)
 
 ```sh
-cargo build --features vendored
+cargo build --features vendored              # full Botan, all algorithms
+cargo build --features vendored-minimal      # minimal Botan, RFC 9580 essentials only
 ```
 
-`build.rs` selects `prebuilt/<target>/` matching your target triple and
-statically links `librnp.a` + `libsexpp.a` + `libjson-c.a` +
-`libbotan-3.a`. The vendored build is fully self-contained — no system
-crypto dependencies required. Pre-builts are produced by
-`.github/workflows/prebuild.yml` for x86_64/aarch64 Linux and macOS
-(native runners).
+`build.rs` selects `prebuilt/<target>/` (full) or `prebuilt/<target>-minimal/`
+(minimal) matching your target triple and statically links `librnp.a` +
+`libsexpp.a` + `libjson-c.a` + `libbotan-3.a` + `libz.a` + `libbz2.a`. Both
+variants are fully self-contained — no system crypto dependencies required.
+
+**Which variant to pick?**
+
+- **`vendored`** (full): ~10-15 MB crate. Every algorithm Botan ships,
+  including PQC (`ML-KEM`, `ML-DSA`, `SLH-DSA`), Chinese crypto (`SM2/3/4`),
+  and legacy symmetric ciphers (`Twofish`, `Blowfish`, `CAST5`, `Camellia`,
+  `IDEA`, `3DES`). Use this when you need to interop with arbitrary
+  third-party OpenPGP material.
+- **`vendored-minimal`**: ~5-7 MB crate. Only the algorithms required for
+  modern RFC 9580 OpenPGP — RSA, ECDSA, ECDH, Ed25519, X25519, AES,
+  SHA-1/2/3, ChaCha20-Poly1305, GCM, OCB, Argon2, HMAC/HKDF/PBKDF2. Use
+  this when you control both signing and verification (embedded verifier,
+  plugin signature check, closed system). Incompatible with the `pqc`
+  feature — `cargo` will fail the build with a clear error if both are on.
+
+Pre-builts are produced by `.github/workflows/prebuild.yml` for
+x86_64/aarch64 Linux and macOS (native runners), in both `full` and
+`minimal` variants.
 
 ## Architecture
 

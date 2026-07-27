@@ -18,6 +18,18 @@
 
 use std::{env, path::PathBuf};
 
+// The minimal Botan variant drops the PQC modules (ML-KEM/ML-DSA/SLH-DSA).
+// The Rust `pqc` Cargo feature requires those modules to be present in the
+// linked librnp. The two together would produce a binary that exposes PQC
+// Rust types but links against a librnp with no PQC backing — fail fast at
+// build time instead of letting callers discover the mismatch at runtime.
+#[cfg(all(feature = "vendored-minimal", feature = "pqc"))]
+compile_error!(
+    "`vendored-minimal` and `pqc` are mutually exclusive — the minimal Botan \
+     build drops the ML-KEM/ML-DSA/SLH-DSA modules. Use the full `vendored` \
+     feature (without `vendored-minimal`) when you need PQC."
+);
+
 fn main() {
     // ---------------------------------------------------------------------
     // 1. Locate the librnp headers and decide how to link.
@@ -221,7 +233,16 @@ fn locate_librnp() -> (PathBuf, Option<PathBuf>, LinkMode) {
 fn build_vendored() -> (PathBuf, PathBuf, PathBuf) {
     let target = std::env::var("TARGET").unwrap_or_default();
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap_or_default());
-    let prebuilt_dir = manifest_dir.join("prebuilt").join(&target);
+
+    // `vendored-minimal` selects the minimized-Botan prebuilt variant
+    // (`prebuilt/<target>-minimal/`). The default `vendored` feature uses
+    // the full-Botan variant (`prebuilt/<target>/`).
+    let prebuilt_subdir = if cfg!(feature = "vendored-minimal") {
+        format!("{}-minimal", target)
+    } else {
+        target.clone()
+    };
+    let prebuilt_dir = manifest_dir.join("prebuilt").join(&prebuilt_subdir);
 
     let include_dir = prebuilt_dir.join("include");
     let lib_dir = prebuilt_dir.join("lib");
@@ -293,29 +314,4 @@ fn build_vendored_from_source() -> (PathBuf, PathBuf, PathBuf) {
     }
 
     (include_dir, lib_dir, static_lib)
-}
-
-/// Add system-wide library search paths so the static librnp.a can find its
-/// runtime deps (botan, json-c, zlib) without requiring the consumer to set
-/// DYLD_LIBRARY_PATH. Best-effort — uses `brew --prefix` on macOS.
-fn add_system_link_search() {
-    if !cfg!(target_os = "macos") {
-        return;
-    }
-    for lib in &["botan", "json-c", "zlib"] {
-        let output = std::process::Command::new("brew")
-            .args(["--prefix", lib])
-            .output();
-        if let Ok(out) = output
-            && out.status.success()
-        {
-            let prefix = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            if !prefix.is_empty() {
-                let lib_dir = PathBuf::from(prefix).join("lib");
-                if lib_dir.exists() {
-                    println!("cargo:rustc-link-search=native={}", lib_dir.display());
-                }
-            }
-        }
-    }
 }

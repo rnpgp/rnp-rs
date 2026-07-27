@@ -7,24 +7,47 @@ on:
 
 jobs:
   build:
-    name: Build (${{ matrix.target }})
+    name: Build (${{ matrix.target }} / ${{ matrix.variant }})
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
+          # Full Botan variant — every module a modern OpenPGP stack might need.
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-24.04
             os: linux
+            variant: full
           - target: aarch64-unknown-linux-gnu
             runner: ubuntu-24.04-arm
             os: linux
+            variant: full
           - target: x86_64-apple-darwin
             runner: macos-15-intel
             os: macos
+            variant: full
           - target: aarch64-apple-darwin
             runner: macos-latest
             os: macos
+            variant: full
+          # Minimal Botan variant — RFC 9580 essentials only (no PQC, no
+          # Chinese crypto, no legacy symmetric ciphers).
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+            os: linux
+            variant: minimal
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+            os: linux
+            variant: minimal
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+            os: macos
+            variant: minimal
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+            os: macos
+            variant: minimal
     steps:
       - uses: actions/checkout@v7
 
@@ -39,12 +62,27 @@ jobs:
         if: matrix.os == 'macos'
         run: brew install json-c zlib bzip2 cmake
 
-      - name: Build Botan 3.6 (static)
+      - name: Build Botan 3.12 (static, ${{ matrix.variant }})
         run: |
           cd $RUNNER_TEMP
           curl -sLO https://botan.randombit.net/releases/Botan-3.12.0.tar.xz
           tar xf Botan-3.12.0.tar.xz
           cd Botan-3.12.0
+
+          # Module sets:
+          # - full:    everything Botan ships except `unsupported`.
+          # - minimal: only what librnp needs for RFC 9580 modern OpenPGP
+          #            (RSA/ECDSA/ECDH/Ed25519/X25519, AES, SHA-1/2/3,
+          #            ChaCha20-Poly1305, GCM, OCB, Argon2, HMAC/HKDF/PBKDF2).
+          #            Drops PQC (ML-KEM/ML-DSA/SLH-DSA), Chinese crypto
+          #            (SM2/3/4), legacy symmetric (Twofish/Blowfish/CAST5/
+          #            Camellia/IDEA/3DES), and rare curves (Ed448/X448).
+          if [ "${{ matrix.variant }}" = "minimal" ]; then
+            MODULES_FLAG="--minimized-build --enable-modules=aes,sha1,sha2_32,sha2_64,sha3,chacha20poly1305,gcm,ocb,rsa,ecdsa,ecdh,ed25519,x25519,hmac,hkdf,pbkdf2,pgp_s2k,argon2,auto_rng,system_rng,ffi"
+          else
+            MODULES_FLAG="--disable-modules=unsupported"
+          fi
+
           if [ "${{ matrix.os }}" = "macos" ]; then
             python3 configure.py \
               --prefix=$RUNNER_TEMP/botan-install \
@@ -52,7 +90,7 @@ jobs:
               --link-method=copy \
               --cc=clang --cc-bin=/usr/bin/clang++ \
               --disable-shared-library \
-              --disable-modules=unsupported
+              $MODULES_FLAG
           else
             python3 configure.py \
               --prefix=$RUNNER_TEMP/botan-install \
@@ -60,12 +98,13 @@ jobs:
               --link-method=copy \
               --cc=gcc --cc-bin=g++ \
               --disable-shared-library \
-              --disable-modules=unsupported
+              $MODULES_FLAG
           fi
           make -f $RUNNER_TEMP/botan-build/Makefile -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
           make -f $RUNNER_TEMP/botan-build/Makefile install
           echo "=== Botan install tree ==="
-          find $RUNNER_TEMP/botan-install -maxdepth 3 -type f -name "*.a" -o -name "*.so*" -o -name "*.dylib"
+          find $RUNNER_TEMP/botan-install -maxdepth 3 -type f \( -name "*.a" -o -name "*.so*" -o -name "*.dylib" \)
+          du -sh $RUNNER_TEMP/botan-install/lib/libbotan-3.a
 
       - name: Build json-c (Linux only — macOS uses Homebrew)
         if: matrix.os == 'linux'
@@ -144,35 +183,42 @@ jobs:
       - name: Collect artifacts
         run: |
           TARGET=${{ matrix.target }}
-          mkdir -p prebuilt/$TARGET/lib prebuilt/$TARGET/include/rnp
+          VARIANT=${{ matrix.variant }}
+          # Layout: prebuilt/<target>/ for full, prebuilt/<target>-minimal/ for minimal.
+          if [ "$VARIANT" = "minimal" ]; then
+            DEST="prebuilt/$TARGET-minimal"
+          else
+            DEST="prebuilt/$TARGET"
+          fi
+          mkdir -p $DEST/lib $DEST/include/rnp
 
-          cp $RUNNER_TEMP/rnp-install/lib/librnp.a prebuilt/$TARGET/lib/
-          cp $RUNNER_TEMP/rnp-install/lib/libsexpp.a prebuilt/$TARGET/lib/
+          cp $RUNNER_TEMP/rnp-install/lib/librnp.a $DEST/lib/
+          cp $RUNNER_TEMP/rnp-install/lib/libsexpp.a $DEST/lib/
 
           if [ "${{ matrix.os }}" = "macos" ]; then
-            cp $(brew --prefix json-c)/lib/libjson-c.a prebuilt/$TARGET/lib/
+            cp $(brew --prefix json-c)/lib/libjson-c.a $DEST/lib/
           else
-            cp $RUNNER_TEMP/json-c-install/lib/libjson-c.a prebuilt/$TARGET/lib/
+            cp $RUNNER_TEMP/json-c-install/lib/libjson-c.a $DEST/lib/
           fi
 
           # Bundle the static Botan library so consumers don't need a system Botan install.
-          cp $RUNNER_TEMP/botan-install/lib/libbotan-3.a prebuilt/$TARGET/lib/
+          cp $RUNNER_TEMP/botan-install/lib/libbotan-3.a $DEST/lib/
 
           # Bundle zlib and bzip2 statically too — fully self-contained builds.
-          cp $RUNNER_TEMP/zlib-install/lib/libz.a prebuilt/$TARGET/lib/
-          cp $RUNNER_TEMP/bzip2-install/lib/libbz2.a prebuilt/$TARGET/lib/
+          cp $RUNNER_TEMP/zlib-install/lib/libz.a $DEST/lib/
+          cp $RUNNER_TEMP/bzip2-install/lib/libbz2.a $DEST/lib/
 
-          cp $RUNNER_TEMP/rnp-install/include/rnp/*.h prebuilt/$TARGET/include/rnp/
+          cp $RUNNER_TEMP/rnp-install/include/rnp/*.h $DEST/include/rnp/
 
-          echo "=== prebuilt/$TARGET ==="
-          find prebuilt/$TARGET -type f
-          du -sh prebuilt/$TARGET/lib/*.a
+          echo "=== $DEST ==="
+          find $DEST -type f
+          du -sh $DEST/lib/*.a
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: prebuilt-${{ matrix.target }}
-          path: prebuilt/${{ matrix.target }}/
+          name: prebuilt-${{ matrix.target }}-${{ matrix.variant }}
+          path: prebuilt/${{ matrix.variant == 'minimal' && format('{0}-minimal', matrix.target) || matrix.target }}/
 
   commit:
     name: Commit prebuilt libs
@@ -194,11 +240,22 @@ jobs:
 
       - name: Assemble prebuilt directory
         run: |
+          # Artifact names: prebuilt-<target>-<variant>
+          # Map back to prebuilt/<target> or prebuilt/<target>-minimal
           for dir in prebuilt-downloads/prebuilt-*; do
-            target=$(basename "$dir" | sed 's/prebuilt-//')
-            rm -rf "prebuilt/$target"
-            mkdir -p "prebuilt/$target"
-            cp -r "$dir"/* "prebuilt/$target/"
+            name=$(basename "$dir")
+            # Strip "prebuilt-" prefix, then split target from variant on the last dash.
+            rest="${name#prebuilt-}"
+            target="${rest%-*}"
+            variant="${rest##*-}"
+            if [ "$variant" = "minimal" ]; then
+              target_dir="prebuilt/$target-minimal"
+            else
+              target_dir="prebuilt/$target"
+            fi
+            rm -rf "$target_dir"
+            mkdir -p "$target_dir"
+            cp -r "$dir"/* "$target_dir/"
           done
           echo "=== All prebuilt targets ==="
           find prebuilt -type f | sort
@@ -223,7 +280,7 @@ jobs:
           if [ "$PR_EXISTS" = "0" ]; then
             gh pr create \
               --title "chore: update prebuilt static libraries for all platforms" \
-              --body "Pre-built static librnp + json-c for all supported targets. Built via the prebuild-static-libs workflow." \
+              --body "Pre-built static librnp + Botan + json-c + zlib + bzip2 for all supported targets and both variants (full + minimal). Built via the prebuild-static-libs workflow." \
               --base main \
               --head chore/prebuilt-update
           else
