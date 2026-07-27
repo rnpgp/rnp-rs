@@ -284,17 +284,18 @@ jobs:
 
             # Patch 3: LibreSSL doesn't have the OPENSSL_secure_* family.
             # Define shims that fall back to the regular heap with
-            # explicit_bzero for the "clear" variant.
-            perl -i -pe 's/#include <openssl\/mem.h>/#include <openssl\/mem.h>\n#ifdef LIBRESSL_VERSION_NUMBER\n#include <string.h>\nstatic inline void *OPENSSL_secure_zalloc(size_t n) { return calloc(1, n); }\nstatic inline void OPENSSL_secure_clear_free(void *p, size_t n) { if (p) { explicit_bzero(p, n); free(p); } }\n#endif/' \
+            # explicit_bzero for the "clear" variant. Inject after the
+            # openssl/crypto.h include (that's where OpenSSL declares them).
+            perl -i -pe 's/#include <openssl\/crypto\.h>/#include <openssl\/crypto.h>\n#ifdef LIBRESSL_VERSION_NUMBER\n#include <string.h>\nstatic inline void *OPENSSL_secure_zalloc(size_t n) { return calloc(1, n); }\nstatic inline void OPENSSL_secure_clear_free(void *p, size_t n) { if (p) { explicit_bzero(p, n); free(p); } }\n#endif/' \
               "$RNP_SRCDIR/src/lib/crypto/mem.h"
           fi
 
           # botan-pqc uses librnp HEAD which has an #include bug in
           # ec.cpp — uses Botan::EC_Group::from_name without including
-          # <botan/ec_group.h>. Add the include.
+          # <botan/ec_group.h>. Add the include after <botan/ffi.h>.
           if [ "${{ matrix.backend }}" = "botan-pqc" ]; then
-            perl -i -pe 's/#include <botan\/rng\.h>/#include <botan\/rng.h>\n#include <botan\/ec_group.h>/' \
-              "$RNP_SRCDIR/src/lib/crypto/ec.cpp" 2>/dev/null || true
+            perl -i -pe 's/#include <botan\/ffi\.h>/#include <botan\/ffi.h>\n#include <botan\/ec_group.h>/' \
+              "$RNP_SRCDIR/src/lib/crypto/ec.cpp"
           fi
 
           ZLIB_PREFIX="$RUNNER_TEMP/zlib-install"
