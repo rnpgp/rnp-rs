@@ -41,6 +41,8 @@ pub enum Mode {
 struct SignerSpec {
     handle: ffi::rnp_key_handle_t,
     hash: Option<Hash>,
+    creation_time: Option<u32>,
+    expiration_time: Option<u32>,
 }
 
 /// Builder over `rnp_op_sign_*`. Unifies inline / detached / cleartext
@@ -89,6 +91,8 @@ impl<'a, 'ctx> Signer<'a, 'ctx> {
         self.signers.push(SignerSpec {
             handle: key.handle,
             hash: None,
+            creation_time: None,
+            expiration_time: None,
         });
         self
     }
@@ -98,6 +102,28 @@ impl<'a, 'ctx> Signer<'a, 'ctx> {
         self.signers.push(SignerSpec {
             handle: key.handle,
             hash: Some(hash),
+            creation_time: None,
+            expiration_time: None,
+        });
+        self
+    }
+
+    /// Add a signer with per-signer hash, creation time, and expiration
+    /// overrides. Wraps `rnp_op_sign_signature_set_hash`,
+    /// `rnp_op_sign_signature_set_creation`, and
+    /// `rnp_op_sign_signature_set_expiration`.
+    pub fn add_signer_with_options(
+        mut self,
+        key: &Key<'_>,
+        hash: Hash,
+        creation_time: Option<u32>,
+        expiration_time: Option<u32>,
+    ) -> Self {
+        self.signers.push(SignerSpec {
+            handle: key.handle,
+            hash: Some(hash),
+            creation_time,
+            expiration_time,
         });
         self
     }
@@ -171,6 +197,12 @@ impl<'a, 'ctx> Signer<'a, 'ctx> {
                 let hash = spec.hash.unwrap_or(self.default_hash);
                 let hash_c = CString::new(hash.as_str()).unwrap();
                 let _ = ffi::rnp_op_sign_signature_set_hash(sig_handle, hash_c.as_ptr());
+                if let Some(ct) = spec.creation_time {
+                    let _ = ffi::rnp_op_sign_signature_set_creation_time(sig_handle, ct);
+                }
+                if let Some(et) = spec.expiration_time {
+                    let _ = ffi::rnp_op_sign_signature_set_expiration_time(sig_handle, et);
+                }
             }
 
             let hash_c = CString::new(self.default_hash.as_str()).unwrap();

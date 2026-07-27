@@ -79,16 +79,16 @@ jobs:
 
   # ---------------------------------------------------------------------
   # MSRV check: ensure the crate compiles on the declared minimum
-  # supported Rust version (currently 1.85, matching edition 2024).
+  # supported Rust version (currently 1.88, matching let-chains in build.rs).
   # ---------------------------------------------------------------------
   msrv:
-    name: MSRV (1.85)
+    name: MSRV (1.88)
     needs: typos
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v7
 
-      - uses: dtolnay/rust-toolchain@1.85.0
+      - uses: dtolnay/rust-toolchain@1.88.0
 
       - name: Install librnp
         uses: ./.github/actions/install-librnp

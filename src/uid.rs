@@ -131,6 +131,11 @@ impl<'key> Uid<'key> {
             Ok(Some(crate::Signature::from_handle(handle)))
         }
     }
+
+    /// Remove this UID from its parent key. Wraps `rnp_uid_remove(key, uid)`.
+    pub fn remove(&self, key: &crate::Key<'_>) -> Result<()> {
+        unsafe { check(ffi::rnp_uid_remove(key.handle, self.handle)) }
+    }
 }
 
 impl<'key> Drop for Uid<'key> {

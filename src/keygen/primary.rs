@@ -123,6 +123,31 @@ impl KeyBuilder {
         self
     }
 
+    /// Clear all key usage flags. Wraps `rnp_op_generate_clear_usage`.
+    pub fn clear_usage(mut self) -> Self {
+        self.usages.clear();
+        self
+    }
+
+    /// Clear all preferred hashes. Wraps `rnp_op_generate_clear_pref_hash`.
+    pub fn clear_pref_hash(mut self) -> Self {
+        self.pref_hashes.clear();
+        self
+    }
+
+    /// Clear all preferred ciphers. Wraps `rnp_op_generate_clear_pref_cipher`.
+    pub fn clear_pref_cipher(mut self) -> Self {
+        self.pref_ciphers.clear();
+        self
+    }
+
+    /// Clear all preferred compressions.
+    /// Wraps `rnp_op_generate_clear_pref_compression`.
+    pub fn clear_pref_compression(mut self) -> Self {
+        self.pref_compressions.clear();
+        self
+    }
+
     pub fn pref_keyserver(mut self, s: impl Into<String>) -> Self {
         self.pref_keyserver = Some(s.into());
         self
