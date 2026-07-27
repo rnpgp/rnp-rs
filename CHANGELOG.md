@@ -10,6 +10,14 @@ are the detailed audit trail for each feature area.
 
 ## [Unreleased]
 
+### Added
+
+- Close remaining API gaps for librnp parity by @[object]
+
+### Other
+
+- Drop null merge_group and add explicit permissions by @[object]
+
 ### Fixed
 
 - Add -include cstring for GCC 13 in release.yml ([#37](https://github.com/rnpgp/rnp-rs/pull/37)) by @[object]
