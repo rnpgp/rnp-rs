@@ -42,9 +42,9 @@ jobs:
       - name: Build Botan 3.6
         run: |
           cd $RUNNER_TEMP
-          curl -sLO https://botan.randombit.net/releases/Botan-3.6.0.tar.xz
-          tar xf Botan-3.6.0.tar.xz
-          cd Botan-3.6.0
+          curl -sLO https://botan.randombit.net/releases/Botan-3.12.0.tar.xz
+          tar xf Botan-3.12.0.tar.xz
+          cd Botan-3.12.0
           if [ "${{ matrix.os }}" = "macos" ]; then
             python3 configure.py \
               --prefix=$RUNNER_TEMP/botan-install \
