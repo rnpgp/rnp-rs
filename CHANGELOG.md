@@ -10,6 +10,14 @@ are the detailed audit trail for each feature area.
 
 ## [Unreleased]
 
+### Fixed
+
+- Add -include cstring for GCC 13 in release.yml ([#37](https://github.com/rnpgp/rnp-rs/pull/37)) by @[object]
+
+### Other
+
+- Update prebuilt static libraries for all platforms ([#36](https://github.com/rnpgp/rnp-rs/pull/36)) by @[object]
+
 ### Other
 
 - Update prebuilt static libraries for all platforms ([#30](https://github.com/rnpgp/rnp-rs/pull/30)) by @[object]
