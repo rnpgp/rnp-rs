@@ -408,15 +408,19 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b chore/prebuilt-update
-          # Pull the latest state in case a prior workflow run already pushed
-          # (force-with-lease needs an up-to-date remote ref).
-          git fetch origin chore/prebuilt-update || true
           git add prebuilt/
           git diff --staged --quiet && echo "No changes" && exit 0
           git commit -m "chore: update prebuilt static libraries for all platforms
 
           Targets: $(ls prebuilt/ | tr '\n' ' ')"
-          git push --force-with-lease=chore/prebuilt-update:origin/chore/prebuilt-update origin chore/prebuilt-update
+          # If origin/chore/prebuilt-update exists, force-with-lease against
+          # it (handles the case where a prior run already pushed). If not
+          # (first run after a merge deleted the branch), plain --force.
+          if git rev-parse --verify origin/chore/prebuilt-update >/dev/null 2>&1; then
+            git push --force-with-lease=chore/prebuilt-update:origin/chore/prebuilt-update origin chore/prebuilt-update
+          else
+            git push --force origin chore/prebuilt-update
+          fi
 
       - name: Open or update PR
         env:
