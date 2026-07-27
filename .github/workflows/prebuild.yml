@@ -244,11 +244,11 @@ jobs:
               "$RNP_SRCDIR/src/lib/crypto/ec.cpp"
             # exdsa_ecdhkem.cpp: uses EC_Group, BigInt, EC_AffinePoint.
             # Has no <botan/*> includes — prepend before any #include.
+            # Note: EC_AffinePoint is in <botan/ec_apoint.h>, not ec_point.h.
             printf '%s\n' \
               '#include <botan/ec_group.h>' \
               '#include <botan/bigint.h>' \
-              '#include <botan/ec_point.h>' \
-              '#include <botan/ec_h2c.h>' \
+              '#include <botan/ec_apoint.h>' \
               > /tmp/botan-includes.h
             cat /tmp/botan-includes.h "$RNP_SRCDIR/src/lib/crypto/exdsa_ecdhkem.cpp" \
               > /tmp/exdsa-new.cpp
