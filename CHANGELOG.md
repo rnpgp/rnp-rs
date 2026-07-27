@@ -12,6 +12,11 @@ are the detailed audit trail for each feature area.
 
 ### Other
 
+- Release v0.1.5 ([#31](https://github.com/rnpgp/rnp-rs/pull/31)) by @[object]
+- Update prebuilt static libraries for all platforms ([#30](https://github.com/rnpgp/rnp-rs/pull/30)) by @[object]
+
+### Other
+
 - Update prebuilt static libraries for all platforms ([#30](https://github.com/rnpgp/rnp-rs/pull/30)) by @[object]
 
 ### Other
