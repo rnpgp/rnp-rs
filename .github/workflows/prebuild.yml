@@ -70,7 +70,7 @@ jobs:
           curl -sLO https://s3.amazonaws.com/json-c_releases/releases/json-c-0.17.tar.gz
           tar xf json-c-0.17.tar.gz
           cmake -S json-c-0.17 -B json-c-build \
-            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-include cstring" \
             -DBUILD_SHARED_LIBS=OFF \
             -DBUILD_TESTING=OFF \
             -DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/json-c-install
@@ -108,7 +108,7 @@ jobs:
             -DBUILD_SHARED_LIBS=OFF \
             -DBUILD_TESTING=OFF \
             -DENABLE_DOC=OFF \
-            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-include cstring" \
             -DCMAKE_PREFIX_PATH="$PREFIX_PATH" \
             -DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/rnp-install
           cmake --build rnp-build --parallel $(nproc 2>/dev/null || sysctl -n hw.ncpu)
