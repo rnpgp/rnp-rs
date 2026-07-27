@@ -479,12 +479,12 @@ the build emits a clear `compile_error!` if you combine it with either.
 To get PQC, use `vendored-pqc` (which implies `pqc` and bundles a
 PQC-enabled librnp).
 
-**Linux libc**: prebuilts ship for both `gnu` (glibc) and `musl`
+**Linux libc**: prebuilt binaries ship for both `gnu` (glibc) and `musl`
 targets. `cargo build --target x86_64-unknown-linux-musl --features
 vendored` works out of the box — the build script keys the prebuilt
 selection off the full target triple.
 
-Pre-builts are produced by `.github/workflows/prebuild.yml` for
+Pre-built binaries are produced by `.github/workflows/prebuild.yml` for
 x86_64/aarch64 Linux (gnu + musl) and macOS, across all three backends.
 
 ## Architecture
