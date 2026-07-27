@@ -71,14 +71,16 @@ jobs:
 
           # Module sets:
           # - full:    everything Botan ships except `unsupported`.
-          # - minimal: only what librnp needs for RFC 9580 modern OpenPGP
-          #            (RSA/ECDSA/ECDH/Ed25519/X25519, AES, SHA-1/2/3,
-          #            ChaCha20-Poly1305, GCM, OCB, Argon2, HMAC/HKDF/PBKDF2).
-          #            Drops PQC (ML-KEM/ML-DSA/SLH-DSA), Chinese crypto
-          #            (SM2/3/4), legacy symmetric (Twofish/Blowfish/CAST5/
-          #            Camellia/IDEA/3DES), and rare curves (Ed448/X448).
+          # - minimal: only what librnp's CMakeLists.txt mandates, plus the
+          #            modern AEAD/KDF modules we want for RFC 9580. Drops
+          #            PQC (ML-KEM/ML-DSA/SLH-DSA), Chinese crypto (SM2/3/4),
+          #            legacy symmetric (Twofish/Blowfish/CAST5/IDEA), rare
+          #            curves (Ed448/X448), Brainpool, RIPEMD-160, TLS.
+          #
+          # The list mirrors `_botan_required_features` in librnp's
+          # src/lib/CMakeLists.txt — librnp won't configure without these.
           if [ "${{ matrix.variant }}" = "minimal" ]; then
-            MODULES_FLAG="--minimized-build --enable-modules=aes,sha1,sha2_32,sha2_64,sha3,chacha20poly1305,gcm,ocb,rsa,ecdsa,ecdh,ed25519,x25519,hmac,hkdf,pbkdf2,pgp_s2k,argon2,auto_rng,system_rng,ffi"
+            MODULES_FLAG="--minimized-build --enable-modules=aes,camellia,des,sha1,sha2_32,sha2_64,sha3,md5,crc24,rsa,dsa,ecdsa,ecdh,ed25519,elgamal,x25519,chacha20poly1305,gcm,ocb,hmac,hkdf,pbkdf2,pgp_s2k,argon2,auto_rng,system_rng,hmac_drbg,mode_cbc,mode_cfb,eme_pkcs1v15,emsa_pkcs1,rfc3394,sp800_56a,pcurves,pcurves_secp192r1,pcurves_secp256k1,pcurves_secp256r1,pcurves_secp384r1,pcurves_secp521r1,ffi"
           else
             MODULES_FLAG="--disable-modules=unsupported"
           fi
