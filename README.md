@@ -20,9 +20,11 @@ support is feature-gated. MSRV is **Rust 1.88** (let-chains in
 
 | Feature          | Default | Description                                                                                                                                                          |
 |------------------|---------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `vendored`       | off     | Statically link the bundled `librnp.a` + `libsexpp.a` + `libjson-c.a` + `libbotan-3.a` + `libz.a` + `libbz2.a` from `prebuilt/<target>/`. Fully self-contained — no system crypto deps. |
-| `vendored-minimal` | off   | Implies `vendored`. Selects the minimal Botan variant — only RFC 9580 essentials (RSA/ECDSA/ECDH/Ed25519/X25519, AES, SHA-1/2/3, ChaCha20-Poly1305, GCM, OCB, Argon2). ~30-40% smaller than full `vendored`. Incompatible with `pqc`. |
-| `pqc`            | off     | Pass `-DRNP_EXPERIMENTAL_PQC` to bindgen so PQC algorithm constants and `Encryptor::prefer_pqc_enc_subkey` are exposed. Requires librnp built with `ENABLE_PQC=ON`. |
+| `vendored`       | off     | Statically link the bundled `librnp.a` + `libsexpp.a` + `libjson-c.a` + `libbotan-3.a` + `libz.a` + `libbz2.a` from `prebuilt/<target>/`. Fully self-contained — no system crypto deps. Botan backend, full module set. |
+| `vendored-minimal` | off   | Implies `vendored`. Botan backend, minimal module set (drops PQC, SM2/3/4, Twofish/Blowfish/CAST5/IDEA, Ed448/X448, Brainpool, RIPEMD-160, TLS). ~23% smaller `libbotan-3.a`. |
+| `vendored-openssl3` | off | Implies `vendored`. Switches the backend to OpenSSL 3.x — bundles `libcrypto.a` + `libssl.a`. FIPS-capable. Incompatible with `pqc` (OpenSSL has no PQC). |
+| `vendored-libressl` | off | Implies `vendored`. Switches the backend to LibreSSL (OpenSSL 1.1 API fork). Bundles `libcrypto.a` + `libssl.a`. Smallest crypto footprint. Incompatible with `pqc`. |
+| `pqc`            | off     | Pass `-DRNP_EXPERIMENTAL_PQC` to bindgen so PQC algorithm constants and `Encryptor::prefer_pqc_enc_subkey` are exposed. Requires librnp built with `ENABLE_PQC=ON`. Forces Botan backend. |
 | `crypto-refresh` | off     | Pass `-DRNP_EXPERIMENTAL_CRYPTO_REFRESH` to bindgen so v6 keys, crypto-refresh algorithm names, and v6 PKESK/SKESK are exposed.                                       |
 | `logging`        | off     | Gate `Context::set_log_fd` / `set_log_file` for directing librnp's diagnostic output.                                                                                |
 
@@ -433,33 +435,47 @@ cargo build
 
 ### Vendored (no system librnp)
 
+Four backend variants:
+
 ```sh
-cargo build --features vendored              # full Botan, all algorithms
-cargo build --features vendored-minimal      # minimal Botan, RFC 9580 essentials only
+cargo build --features vendored              # Botan, full module set
+cargo build --features vendored-minimal      # Botan, minimal modules
+cargo build --features vendored-openssl3     # OpenSSL 3.x
+cargo build --features vendored-libressl     # LibreSSL (OpenSSL 1.1 API)
 ```
 
-`build.rs` selects `prebuilt/<target>/` (full) or `prebuilt/<target>-minimal/`
-(minimal) matching your target triple and statically links `librnp.a` +
-`libsexpp.a` + `libjson-c.a` + `libbotan-3.a` + `libz.a` + `libbz2.a`. Both
-variants are fully self-contained — no system crypto dependencies required.
+`build.rs` selects the right `prebuilt/<target>-<suffix>/` subdir based on
+the feature combination. Each subdir contains `librnp.a` + `libsexpp.a` +
+`libjson-c.a` + `libz.a` + `libbz2.a` plus the backend's crypto lib
+(`libbotan-3.a` for Botan variants, `libcrypto.a` + `libssl.a` for
+OpenSSL/LibreSSL). Fully self-contained — no system crypto deps.
 
-**Which variant to pick?**
+**Backend picker**
 
-- **`vendored`** (full): ~10-15 MB crate. Every algorithm Botan ships,
-  including PQC (`ML-KEM`, `ML-DSA`, `SLH-DSA`), Chinese crypto (`SM2/3/4`),
-  and legacy symmetric ciphers (`Twofish`, `Blowfish`, `CAST5`, `Camellia`,
-  `IDEA`, `3DES`). Use this when you need to interop with arbitrary
-  third-party OpenPGP material.
-- **`vendored-minimal`**: ~5-7 MB crate. Only the algorithms required for
-  modern RFC 9580 OpenPGP — RSA, ECDSA, ECDH, Ed25519, X25519, AES,
-  SHA-1/2/3, ChaCha20-Poly1305, GCM, OCB, Argon2, HMAC/HKDF/PBKDF2. Use
-  this when you control both signing and verification (embedded verifier,
-  plugin signature check, closed system). Incompatible with the `pqc`
-  feature — `cargo` will fail the build with a clear error if both are on.
+- **`vendored`** (Botan, full): the only option that supports PQC
+  (`ML-KEM`, `ML-DSA`, `SLH-DSA`). Largest footprint. Use when you need
+  RFC 9580 crypto-refresh + PQC, or just want maximum algorithm coverage.
+- **`vendored-minimal`** (Botan, minimal): same Botan codebase but ~23%
+  smaller `libbotan-3.a` — drops TLS, PQC, SM2/3/4, legacy symmetric
+  ciphers. Good default for non-PQC use.
+- **`vendored-openssl3`**: OpenSSL 3.x backend. FIPS-capable. Smaller
+  than Botan. Choose when targeting FIPS environments or where OpenSSL
+  is the approved crypto provider.
+- **`vendored-libressl`**: LibreSSL backend (OpenSSL 1.1 API). Smallest
+  crypto footprint. Choose for size-constrained deployments that don't
+  need PQC or FIPS.
+
+`pqc` is incompatible with everything except plain `vendored` — the
+build emits a clear `compile_error!` if you combine it with any other
+backend.
+
+**Linux libc**: prebuilts ship for both `gnu` (glibc) and `musl`
+targets. `cargo build --target x86_64-unknown-linux-musl --features
+vendored` works out of the box — the build script keys the prebuilt
+selection off the full target triple.
 
 Pre-builts are produced by `.github/workflows/prebuild.yml` for
-x86_64/aarch64 Linux and macOS (native runners), in both `full` and
-`minimal` variants.
+x86_64/aarch64 Linux (gnu + musl) and macOS, across all four backends.
 
 ## Architecture
 

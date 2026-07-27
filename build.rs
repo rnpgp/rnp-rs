@@ -18,16 +18,27 @@
 
 use std::{env, path::PathBuf};
 
-// The minimal Botan variant drops the PQC modules (ML-KEM/ML-DSA/SLH-DSA).
-// The Rust `pqc` Cargo feature requires those modules to be present in the
-// linked librnp. The two together would produce a binary that exposes PQC
-// Rust types but links against a librnp with no PQC backing — fail fast at
-// build time instead of letting callers discover the mismatch at runtime.
+// PQC requires Botan's ML-KEM/ML-DSA/SLH-DSA modules. The minimal Botan
+// variant drops them; OpenSSL 3.x and LibreSSL don't have them at all.
+// Fail fast at build time instead of letting callers discover the
+// mismatch at runtime.
 #[cfg(all(feature = "vendored-minimal", feature = "pqc"))]
 compile_error!(
     "`vendored-minimal` and `pqc` are mutually exclusive — the minimal Botan \
      build drops the ML-KEM/ML-DSA/SLH-DSA modules. Use the full `vendored` \
      feature (without `vendored-minimal`) when you need PQC."
+);
+#[cfg(all(feature = "vendored-openssl3", feature = "pqc"))]
+compile_error!(
+    "`vendored-openssl3` and `pqc` are mutually exclusive — OpenSSL 3.x does \
+     not implement the PQC algorithms (ML-KEM/ML-DSA/SLH-DSA). Use the \
+     Botan-backed `vendored` feature when you need PQC."
+);
+#[cfg(all(feature = "vendored-libressl", feature = "pqc"))]
+compile_error!(
+    "`vendored-libressl` and `pqc` are mutually exclusive — LibreSSL does \
+     not implement the PQC algorithms (ML-KEM/ML-DSA/SLH-DSA). Use the \
+     Botan-backed `vendored` feature when you need PQC."
 );
 
 fn main() {
@@ -116,14 +127,31 @@ fn main() {
             // the dependency.
             println!("cargo:rustc-link-lib=dylib=rnp");
         }
-        LinkMode::Vendored { static_lib_path } => {
+        LinkMode::Vendored { static_lib_path, backend } => {
             println!("cargo:rustc-link-lib=static=rnp");
             println!("cargo:rustc-link-lib=static=sexpp");
             println!("cargo:rustc-link-lib=static=json-c");
-            println!("cargo:rustc-link-lib=static=botan-3");
             println!("cargo:rustc-link-lib=static=z");
             println!("cargo:rustc-link-lib=static=bz2");
             println!("cargo:rerun-if-changed={}", static_lib_path.display());
+            match backend {
+                VendoredBackend::Botan => {
+                    println!("cargo:rustc-link-lib=static=botan-3");
+                }
+                VendoredBackend::OpenSSL3 | VendoredBackend::LibreSSL => {
+                    // OpenSSL and LibreSSL both ship libcrypto + libssl;
+                    // librnp only links against libcrypto at runtime, but
+                    // libssl comes in transitively for some utility code.
+                    println!("cargo:rustc-link-lib=static=crypto");
+                    println!("cargo:rustc-link-lib=static=ssl");
+                    // OpenSSL/LibreSSL need dl and pthread on Linux for
+                    // runtime symbol resolution and threading.
+                    if !cfg!(target_os = "macos") {
+                        println!("cargo:rustc-link-lib=dylib=dl");
+                        println!("cargo:rustc-link-lib=dylib=pthread");
+                    }
+                }
+            }
             if cfg!(target_os = "macos") {
                 println!("cargo:rustc-link-lib=dylib=c++");
             } else {
@@ -154,7 +182,47 @@ enum LinkMode {
     /// The path is the resulting `librnp.a`. Only constructed when the
     /// `vendored` Cargo feature is on.
     #[allow(dead_code)]
-    Vendored { static_lib_path: PathBuf },
+    Vendored {
+        static_lib_path: PathBuf,
+        backend: VendoredBackend,
+    },
+}
+
+/// Crypto backend selected by the vendored-mode feature flag combination.
+/// Mirrors the `prebuilt/<target>-<suffix>/` directory layout.
+#[allow(dead_code)]
+enum VendoredBackend {
+    Botan,
+    OpenSSL3,
+    LibreSSL,
+}
+
+impl VendoredBackend {
+    /// Subdir suffix appended to the target triple to find the right
+    /// prebuilt variant. Empty for the default (Botan full).
+    #[allow(dead_code)]
+    fn subdir_suffix() -> &'static str {
+        if cfg!(feature = "vendored-openssl3") {
+            "-openssl3"
+        } else if cfg!(feature = "vendored-libressl") {
+            "-libressl"
+        } else if cfg!(feature = "vendored-minimal") {
+            "-minimal"
+        } else {
+            ""
+        }
+    }
+
+    #[allow(dead_code)]
+    fn from_features() -> Self {
+        if cfg!(feature = "vendored-openssl3") {
+            VendoredBackend::OpenSSL3
+        } else if cfg!(feature = "vendored-libressl") {
+            VendoredBackend::LibreSSL
+        } else {
+            VendoredBackend::Botan
+        }
+    }
 }
 
 fn locate_librnp() -> (PathBuf, Option<PathBuf>, LinkMode) {
@@ -162,7 +230,14 @@ fn locate_librnp() -> (PathBuf, Option<PathBuf>, LinkMode) {
     #[cfg(feature = "vendored")]
     {
         let (include_dir, lib_dir, static_lib) = build_vendored();
-        return (include_dir, Some(lib_dir), LinkMode::Vendored { static_lib_path: static_lib });
+        return (
+            include_dir,
+            Some(lib_dir),
+            LinkMode::Vendored {
+                static_lib_path: static_lib,
+                backend: VendoredBackend::from_features(),
+            },
+        );
     }
 
     // Default branch (compiled when `vendored` is off, or always — the
@@ -234,14 +309,12 @@ fn build_vendored() -> (PathBuf, PathBuf, PathBuf) {
     let target = std::env::var("TARGET").unwrap_or_default();
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap_or_default());
 
-    // `vendored-minimal` selects the minimized-Botan prebuilt variant
-    // (`prebuilt/<target>-minimal/`). The default `vendored` feature uses
-    // the full-Botan variant (`prebuilt/<target>/`).
-    let prebuilt_subdir = if cfg!(feature = "vendored-minimal") {
-        format!("{}-minimal", target)
-    } else {
-        target.clone()
-    };
+    // Backend feature flags select different prebuilt subtrees:
+    //   (default)             -> prebuilt/<target>/         (Botan, full)
+    //   vendored-minimal      -> prebuilt/<target>-minimal/ (Botan, minimal)
+    //   vendored-openssl3     -> prebuilt/<target>-openssl3/
+    //   vendored-libressl     -> prebuilt/<target>-libressl/
+    let prebuilt_subdir = format!("{}{}", target, VendoredBackend::subdir_suffix());
     let prebuilt_dir = manifest_dir.join("prebuilt").join(&prebuilt_subdir);
 
     let include_dir = prebuilt_dir.join("include");

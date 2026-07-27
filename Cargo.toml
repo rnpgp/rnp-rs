@@ -72,6 +72,15 @@ vendored = []
 # CAST5/Camellia/IDEA/3DES), and rare curves (Ed448/X448). Incompatible
 # with the `pqc` feature (build.rs emits a compile_error!).
 vendored-minimal = ["vendored"]
+# Implies `vendored`. Switches the backend from Botan to OpenSSL 3.x.
+# Picks prebuilt/<target>-openssl3/ (or prebuilt/<target>-openssl3-minimal/
+# if combined with vendored-minimal, though minimal-openssl isn't currently
+# built). Incompatible with `pqc` (OpenSSL has no PQC support).
+vendored-openssl3 = ["vendored"]
+# Implies `vendored`. Switches the backend to LibreSSL (the maintained
+# fork that tracks the OpenSSL 1.1 API). Picks prebuilt/<target>-libressl/.
+# Incompatible with `pqc`.
+vendored-libressl = ["vendored"]
 # Pass -DRNP_EXPERIMENTAL_PQC to bindgen so the PQC algorithm constants and
 # `rnp_op_encrypt_prefer_pqc_enc_subkey` are picked up. Requires the linked
 # librnp to have been built with ENABLE_PQC=ON (Botan 3 + ENABLE_PQC).
