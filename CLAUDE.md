@@ -28,7 +28,7 @@ cargo build                 # generates FFI bindings via bindgen, links -lrnp
 cargo test                  # runs the integration tests in tests/
 cargo test --test sign_verify                # one test binary by name
 cargo test inline_sign_verify_roundtrip      # one test by name
-cargo build --features vendored              # currently a no-op stub (see Roadmap)
+cargo build --features vendored              # hermetic static build (pinned tarballs, sha256-verified)
 ```
 
 ### Dependencies
@@ -176,11 +176,13 @@ Status snapshot (full detail in the per-phase TODO files):
   LLVM 22 miscompiles `calc_sig_words` at -O3 on ARM64, breaking all
   BigInt operations.** See `TODO.roadmap/09-pqc.md` for the exact build
   commands.
-- **Phase 10 — Vendored build.** Done. `vendored` Cargo feature drives a
-  real CMake build of librnp from `vendor/rnp/` (git submodule pinned to
-  v0.18.1). Statically links `librnp.a` + `libsexpp.a` plus the system
-  Botan/JSON-C/zlib/bzip2 discovered at build time. All 46 default tests
-  pass under `--features vendored`.
+- **Phase 10 — Vendored build.** Done, now hermetic. `vendored` downloads
+  sha256-pinned release tarballs of librnp 0.18.1 + Botan 3.12.0 + json-c
+  0.18 at build time, builds them from source (Botan minimized modules) and
+  statically links everything — no system crypto libraries, no
+  `brew --prefix` lookups. Air-gapped via `RNP_VENDOR_DIR`. The
+  `vendor/rnp/` submodule and `prebuilt/` libs are no longer used by
+  `build.rs`. See `vendor/README.md`.
 - **Phase 11 — UID signatures.** Done. `Uid::signature_at/signatures/
   revocation_signature`.
 - **Phase 12 — Keygen protection.** Done. `KeyBuilder::protection(

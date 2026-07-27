@@ -100,7 +100,8 @@ jobs:
         run: cargo test --no-fail-fast
 
   # ---------------------------------------------------------------------
-  # Vendored build — statically link librnp built from vendor/rnp/.
+  # Vendored build — hermetic static build of librnp + Botan 3 + json-c
+  # from sha256-pinned tarballs (see build.rs / vendor/README.md).
   # ---------------------------------------------------------------------
   vendored:
     name: vendored (${{ matrix.os }})
@@ -112,21 +113,18 @@ jobs:
         os: [ubuntu-22.04, macos-14]
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: recursive
 
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install build deps (macOS)
         if: matrix.os == 'macos-14'
-        run: brew install botan json-c zlib bzip2 cmake
+        run: brew install cmake
 
       - name: Install build deps (Linux)
         if: matrix.os == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libbotan-2-dev libbotan-3-dev \
-            libjson-c-dev zlib1g-dev libbz2-dev cmake
+          sudo apt-get install -y zlib1g-dev libbz2-dev cmake
 
       - uses: actions/cache@v6
         with:
@@ -134,8 +132,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-            vendor/rnp/build
-          key: vendored-${{ matrix.os }}-${{ hashFiles('Cargo.lock', 'vendor/rnp/CMakeLists.txt') }}
+          key: vendored-${{ matrix.os }}-${{ hashFiles('Cargo.lock', 'build.rs') }}
 
       - name: cargo test --features vendored
         run: cargo test --features vendored --no-fail-fast

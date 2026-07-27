@@ -20,17 +20,19 @@ include = [
     "Cargo.lock",
     "README.md",
     "LICENSE.md",
-    "prebuilt/**/*.a",
-    "prebuilt/**/*.h",
-    "vendor/rnp/CMakeLists.txt",
-    "vendor/rnp/src/lib/CMakeLists.txt",
+    # Bundled librnp headers used only by docs.rs builds (DOCS_RS env) to run
+    # bindgen inside the network-less sandbox. Nothing links against them.
+    "prebuilt/x86_64-unknown-linux-gnu/include/**/*.h",
     "vendor/README.md",
 ]
 
 [package.metadata.docs.rs]
 # Build with all features so the PQC + crypto-refresh API surface appears
-# in the rendered docs. docs.rs ignores features whose build deps aren't
-# available, so this won't fail the doc build.
+# in the rendered docs. The docs.rs sandbox has no network access, so the
+# `vendored` feature cannot fetch its pinned tarballs there; build.rs
+# detects the DOCS_RS environment and runs bindgen against the headers
+# bundled under prebuilt/x86_64-unknown-linux-gnu/include instead (nothing
+# is linked for documentation builds).
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
@@ -61,8 +63,11 @@ harness = false
 
 [features]
 default = []
-# Build librnp from a vendored git submodule of the `rnp` C++ project. See
-# TODO.roadmap/10-vendored-build.md.
+# Hermetic static build: downloads sha256-pinned release tarballs of librnp,
+# Botan 3 and json-c at build time (or takes them from RNP_VENDOR_DIR for
+# offline builds), compiles them from source and statically links everything
+# (librnp, libsexpp, Botan, json-c, zlib, bzip2). No system crypto libraries
+# are used. See vendor/README.md.
 vendored = []
 # Pass -DRNP_EXPERIMENTAL_PQC to bindgen so the PQC algorithm constants and
 # `rnp_op_encrypt_prefer_pqc_enc_subkey` are picked up. Requires the linked

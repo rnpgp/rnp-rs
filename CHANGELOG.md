@@ -10,6 +10,29 @@ are the detailed audit trail for each feature area.
 
 ## [Unreleased]
 
+### Added
+
+- Hermetic `vendored` build: enabling the `vendored` feature now downloads
+  sha256-pinned release tarballs of librnp 0.18.1, Botan 3.12.0 and
+  json-c 0.18 at build time, builds them all from source (Botan with a
+  minimized module set derived from rnp upstream's `ci/botan3-modules`),
+  and statically links everything — `librnp.a`, `libsexpp.a`,
+  `libbotan-3.a`, `libjson-c.a`, zlib and bzip2. No system crypto
+  libraries are used or referenced. Air-gapped builds can pre-seed the
+  tarballs with the new `RNP_VENDOR_DIR` environment variable. See
+  `vendor/README.md`.
+
+### Changed
+
+- **Breaking (vendored feature):** the `vendored` feature no longer uses
+  the `vendor/rnp/` git submodule or the `prebuilt/` static libraries, and
+  no longer links Botan/json-c dynamically from the system (the
+  `brew --prefix` link-path lookup is removed). `RNP_VENDOR_BACKEND` is
+  ignored — the vendored build always uses the pinned Botan 3 backend.
+  Build-time tools now required for `vendored`: C/C++ compiler, cmake,
+  python3, tar, and curl (curl not needed when `RNP_VENDOR_DIR` is set);
+  on Linux also `zlib1g-dev` and `libbz2-dev`.
+
 ### Other
 
 - Update prebuilt static libraries for all platforms ([#30](https://github.com/rnpgp/rnp-rs/pull/30)) by @[object]

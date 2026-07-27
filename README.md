@@ -33,14 +33,15 @@ support is feature-gated.
   `supported_features`).
 - **PQC** — `ML-KEM`, `ML-DSA`, `SLH-DSA` composite algorithms,
   `prefer_pqc_enc_subkey`, v6 PKESK/SKESK.
-- **Vendored build** — `--features vendored` builds librnp from a git
-  submodule via CMake, statically links the result.
+- **Vendored build** — `--features vendored` downloads sha256-pinned
+  release tarballs of librnp, Botan 3 and json-c, builds them from source,
+  and statically links everything. Hermetic: no system crypto libraries.
 
 ## Cargo features
 
 | Feature           | Default | Description                                                                                                                                                                                           |
 |-------------------|---------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `vendored`        | off     | Build librnp from `vendor/rnp/` via CMake and statically link the resulting `librnp.a`. See [vendor/README.md](vendor/README.md).                                                                     |
+| `vendored`        | off     | Hermetic static build: downloads sha256-pinned tarballs of librnp + Botan 3 + json-c at build time, builds them from source, statically links everything. See [vendor/README.md](vendor/README.md). |
 | `pqc`             | off     | Pass `-DRNP_EXPERIMENTAL_PQC` to bindgen so PQC algorithm constants and `rnp_op_encrypt_prefer_pqc_enc_subkey` are exposed. Requires the linked librnp to have been built with `ENABLE_PQC=ON`.       |
 | `crypto-refresh`  | off     | Pass `-DRNP_EXPERIMENTAL_CRYPTO_REFRESH` to bindgen so v6 keys, crypto-refresh algorithm names, and `enable_pkesk_v6` / `enable_skesk_v6` are exposed. Requires the linked librnp built with `ENABLE_CRYPTO_REFRESH=ON`. |
 | `logging`         | off     | Gate `Context::set_log_fd` / `set_log_file` for directing librnp's diagnostic output to a file.                                                                                                       |
@@ -100,11 +101,15 @@ cargo build
 ### Vendored
 
 ```sh
-git submodule update --init --recursive   # initialize vendor/rnp
 cargo build --features vendored
 ```
 
-Requires Botan, JSON-C, and zlib to be installed system-wide.
+Fully hermetic: downloads sha256-pinned release tarballs of librnp, Botan 3
+and json-c, builds them from source and statically links everything —
+no system crypto libraries required or referenced. Build-time tools needed:
+C/C++ compiler, cmake, python3, tar, and curl (offline builds can pre-seed
+the tarballs via `RNP_VENDOR_DIR`). See
+[vendor/README.md](vendor/README.md) for details.
 
 ## License
 
