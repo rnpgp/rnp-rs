@@ -69,7 +69,7 @@ jobs:
             -DCRYPTO_BACKEND=botan3 \
             -DBUILD_SHARED_LIBS=ON \
             -DBUILD_TESTING=OFF \
-            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-include cstring" \
             -DCMAKE_INSTALL_PREFIX="$RNP_PREFIX" \
             -DCMAKE_PREFIX_PATH="$BOTAN_PREFIX"
           cmake --build rnp-v0.18.1/build --parallel $(nproc)
@@ -134,7 +134,7 @@ jobs:
             -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ \
             -DCRYPTO_BACKEND=botan3 \
             -DBUILD_SHARED_LIBS=ON -DBUILD_TESTING=OFF \
-            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-include cstring" \
             -DCMAKE_INSTALL_PREFIX="$RNP_PREFIX" \
             -DCMAKE_PREFIX_PATH="$BOTAN_PREFIX"
           cmake --build rnp-v0.18.1/build --parallel $(nproc)
