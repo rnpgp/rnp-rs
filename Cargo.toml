@@ -77,6 +77,13 @@ vendored-minimal = ["vendored"]
 # if combined with vendored-minimal, though minimal-openssl isn't currently
 # built). Incompatible with `pqc` (OpenSSL has no PQC support).
 vendored-openssl3 = ["vendored"]
+# Implies `vendored`. Switches the backend to LibreSSL (the maintained
+# fork that tracks the OpenSSL 1.1 API). Picks prebuilt/<target>-libressl/.
+# Applies a build-time patch to librnp's findopensslfeatures.c so it uses
+# the public EVP_PKEY_asn1_* family instead of the OpenSSL-internal
+# EVP_PKEY_meth_* family — see https://github.com/rnpgp/rnp/issues/2440.
+# Incompatible with `pqc`.
+vendored-libressl = ["vendored"]
 # Pass -DRNP_EXPERIMENTAL_PQC to bindgen so the PQC algorithm constants and
 # `rnp_op_encrypt_prefer_pqc_enc_subkey` are picked up. Requires the linked
 # librnp to have been built with ENABLE_PQC=ON (Botan 3 + ENABLE_PQC).

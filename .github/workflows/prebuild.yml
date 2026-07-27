@@ -18,23 +18,29 @@ jobs:
           - { target: x86_64-apple-darwin,  runner: macos-15-intel, os: macos, backend: botan-full,    libc: default }
           - { target: x86_64-apple-darwin,  runner: macos-15-intel, os: macos, backend: botan-minimal, libc: default }
           - { target: x86_64-apple-darwin,  runner: macos-15-intel, os: macos, backend: openssl3,     libc: default }
+          - { target: x86_64-apple-darwin,  runner: macos-15-intel, os: macos, backend: libressl,     libc: default }
           - { target: aarch64-apple-darwin, runner: macos-latest,   os: macos, backend: botan-full,    libc: default }
           - { target: aarch64-apple-darwin, runner: macos-latest,   os: macos, backend: botan-minimal, libc: default }
           - { target: aarch64-apple-darwin, runner: macos-latest,   os: macos, backend: openssl3,     libc: default }
+          - { target: aarch64-apple-darwin, runner: macos-latest,   os: macos, backend: libressl,     libc: default }
           # ---------- Linux glibc (native runners) ----------
           - { target: x86_64-unknown-linux-gnu,  runner: ubuntu-24.04,     os: linux, backend: botan-full,    libc: gnu }
           - { target: x86_64-unknown-linux-gnu,  runner: ubuntu-24.04,     os: linux, backend: botan-minimal, libc: gnu }
           - { target: x86_64-unknown-linux-gnu,  runner: ubuntu-24.04,     os: linux, backend: openssl3,     libc: gnu }
+          - { target: x86_64-unknown-linux-gnu,  runner: ubuntu-24.04,     os: linux, backend: libressl,     libc: gnu }
           - { target: aarch64-unknown-linux-gnu, runner: ubuntu-24.04-arm, os: linux, backend: botan-full,    libc: gnu }
           - { target: aarch64-unknown-linux-gnu, runner: ubuntu-24.04-arm, os: linux, backend: botan-minimal, libc: gnu }
           - { target: aarch64-unknown-linux-gnu, runner: ubuntu-24.04-arm, os: linux, backend: openssl3,     libc: gnu }
-          # ---------- Linux musl (Alpine container on native runners) ----------
-          - { target: x86_64-unknown-linux-musl,  runner: ubuntu-24.04,     os: linux, backend: botan-full,    libc: musl, container: alpine:latest }
-          - { target: x86_64-unknown-linux-musl,  runner: ubuntu-24.04,     os: linux, backend: botan-minimal, libc: musl, container: alpine:latest }
-          - { target: x86_64-unknown-linux-musl,  runner: ubuntu-24.04,     os: linux, backend: openssl3,     libc: musl, container: alpine:latest }
-          - { target: aarch64-unknown-linux-musl, runner: ubuntu-24.04-arm, os: linux, backend: botan-full,    libc: musl, container: alpine:latest }
-          - { target: aarch64-unknown-linux-musl, runner: ubuntu-24.04-arm, os: linux, backend: botan-minimal, libc: musl, container: alpine:latest }
-          - { target: aarch64-unknown-linux-musl, runner: ubuntu-24.04-arm, os: linux, backend: openssl3,     libc: musl, container: alpine:latest }
+          - { target: aarch64-unknown-linux-gnu, runner: ubuntu-24.04-arm, os: linux, backend: libressl,     libc: gnu }
+          # ---------- Linux musl (Alpine container on x86_64 runner only) ----------
+          # GitHub Actions limitation: JavaScript actions (checkout, upload-
+          # artifact) can't run inside Alpine containers on ARM64 runners.
+          # aarch64-musl consumers must cross-compile from x86_64-musl or
+          # use the glibc aarch64 variant.
+          - { target: x86_64-unknown-linux-musl, runner: ubuntu-24.04, os: linux, backend: botan-full,    libc: musl, container: alpine:latest }
+          - { target: x86_64-unknown-linux-musl, runner: ubuntu-24.04, os: linux, backend: botan-minimal, libc: musl, container: alpine:latest }
+          - { target: x86_64-unknown-linux-musl, runner: ubuntu-24.04, os: linux, backend: openssl3,     libc: musl, container: alpine:latest }
+          - { target: x86_64-unknown-linux-musl, runner: ubuntu-24.04, os: linux, backend: libressl,     libc: musl, container: alpine:latest }
     steps:
       - uses: actions/checkout@v7
 
@@ -136,6 +142,28 @@ jobs:
           du -sh $RUNNER_TEMP/openssl-install/lib/libcrypto.a
 
       # ---------------------------------------------------------------------
+      # Backend: LibreSSL
+      # ---------------------------------------------------------------------
+      - name: Build LibreSSL (static)
+        if: matrix.backend == 'libressl'
+        run: |
+          cd $RUNNER_TEMP
+          curl -sLO https://ftp.openbsd.org/pub/OpenBSD/LibreSSL/libressl-4.0.0.tar.gz
+          tar xf libressl-4.0.0.tar.gz
+          cd libressl-4.0.0
+
+          mkdir build && cd build
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DLIBRESSL_TESTS=OFF \
+            -DLIBRESSL_APPS=OFF \
+            -DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/libressl-install
+          cmake --build . --parallel $(nproc 2>/dev/null || sysctl -n hw.ncpu)
+          cmake --install .
+          du -sh $RUNNER_TEMP/libressl-install/lib/libcrypto.a
+
+      # ---------------------------------------------------------------------
       # Common deps: json-c, zlib, bzip2 (Linux only — macOS uses Homebrew)
       # ---------------------------------------------------------------------
       - name: Build json-c (Linux only)
@@ -205,10 +233,24 @@ jobs:
           curl -sLO https://github.com/rnpgp/rnp/releases/download/v0.18.1/rnp-v0.18.1.tar.gz
           tar xf rnp-v0.18.1.tar.gz
 
+          # LibreSSL doesn't expose the OpenSSL-internal EVP_PKEY_meth_* family
+          # that librnp's findopensslfeatures.c uses to enumerate algorithms.
+          # Swap it for the public EVP_PKEY_asn1_* counterpart (works on
+          # OpenSSL 1.1, 3.x, and LibreSSL). Upstream tracked in
+          # https://github.com/rnpgp/rnp/issues/2440 — drop this patch once
+          # a librnp release includes the fix.
+          if [ "${{ matrix.backend }}" = "libressl" ]; then
+            sed -i \
+              -e 's/EVP_PKEY_meth_get_count/EVP_PKEY_asn1_get_count/g' \
+              -e 's/const EVP_PKEY_METHOD \*pmeth = EVP_PKEY_meth_get0/const EVP_PKEY_ASN1_METHOD *ameth = EVP_PKEY_asn1_get0/g' \
+              -e 's/EVP_PKEY_meth_get0_info(\&id, NULL, pmeth)/EVP_PKEY_asn1_get0_info(\&id, NULL, NULL, NULL, NULL, ameth)/g' \
+              rnp-v0.18.1/cmake/Modules/findopensslfeatures.c
+          fi
+
           ZLIB_PREFIX="$RUNNER_TEMP/zlib-install"
           BZIP2_PREFIX="$RUNNER_TEMP/bzip2-install"
 
-          # Pick the backend prefix and CMake value.
+# Pick the backend prefix and CMake value.
           case "${{ matrix.backend }}" in
             botan-full|botan-minimal)
               CRYPTO_BACKEND=botan3
@@ -217,6 +259,10 @@ jobs:
             openssl3)
               CRYPTO_BACKEND=openssl
               CRYPTO_PREFIX="$RUNNER_TEMP/openssl-install"
+              ;;
+            libressl)
+              CRYPTO_BACKEND=openssl
+              CRYPTO_PREFIX="$RUNNER_TEMP/libressl-install"
               ;;
           esac
 
@@ -261,10 +307,11 @@ jobs:
         run: |
           TARGET=${{ matrix.target }}
           BACKEND=${{ matrix.backend }}
-          case "$BACKEND" in
+case "$BACKEND" in
             botan-full)    SUFFIX="" ;;
             botan-minimal) SUFFIX="-minimal" ;;
             openssl3)      SUFFIX="-openssl3" ;;
+            libressl)      SUFFIX="-libressl" ;;
           esac
           DEST="prebuilt/$TARGET$SUFFIX"
           mkdir -p $DEST/lib $DEST/include/rnp
@@ -281,7 +328,7 @@ jobs:
           cp $RUNNER_TEMP/zlib-install/lib/libz.a $DEST/lib/
           cp $RUNNER_TEMP/bzip2-install/lib/libbz2.a $DEST/lib/
 
-          # Bundle the backend's static crypto library.
+# Bundle the backend's static crypto library.
           case "$BACKEND" in
             botan-full|botan-minimal)
               cp $RUNNER_TEMP/botan-install/lib/libbotan-3.a $DEST/lib/
@@ -289,6 +336,10 @@ jobs:
             openssl3)
               cp $RUNNER_TEMP/openssl-install/lib/libcrypto.a $DEST/lib/
               cp $RUNNER_TEMP/openssl-install/lib/libssl.a $DEST/lib/
+              ;;
+            libressl)
+              cp $RUNNER_TEMP/libressl-install/lib/libcrypto.a $DEST/lib/
+              cp $RUNNER_TEMP/libressl-install/lib/libssl.a $DEST/lib/
               ;;
           esac
 
