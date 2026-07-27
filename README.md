@@ -439,7 +439,7 @@ cargo build --features vendored
 `build.rs` selects `prebuilt/<target>/` matching your target triple and
 statically links `librnp.a` + `libsexpp.a` + `libjson-c.a`. Botan 3 is
 still dynamic at this stage — install via `brew install botan`
-(macOS) or your distro's `botan` package. Pre-builts are produced by
+(macOS) or your distro's `botan` package. Pre-built binaries are produced by
 the `.github/workflows/prebuild.yml` matrix for x86_64/aarch64 Linux
 and macOS (native runners).
 
