@@ -115,7 +115,7 @@ fn signature_type_unknown_preserves_value() {
 }
 
 #[test]
-fn signature_type_unparseable_falls_back_to_unknown_zero() {
+fn signature_type_unparsable_falls_back_to_unknown_zero() {
     let parsed = SignatureType::parse("nonsense");
     assert_eq!(parsed, SignatureType::Unknown(0));
 }
