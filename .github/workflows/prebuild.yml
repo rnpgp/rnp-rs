@@ -18,29 +18,23 @@ jobs:
           - { target: x86_64-apple-darwin,  runner: macos-15-intel, os: macos, backend: botan-full,    libc: default }
           - { target: x86_64-apple-darwin,  runner: macos-15-intel, os: macos, backend: botan-minimal, libc: default }
           - { target: x86_64-apple-darwin,  runner: macos-15-intel, os: macos, backend: openssl3,     libc: default }
-          - { target: x86_64-apple-darwin,  runner: macos-15-intel, os: macos, backend: libressl,     libc: default }
           - { target: aarch64-apple-darwin, runner: macos-latest,   os: macos, backend: botan-full,    libc: default }
           - { target: aarch64-apple-darwin, runner: macos-latest,   os: macos, backend: botan-minimal, libc: default }
           - { target: aarch64-apple-darwin, runner: macos-latest,   os: macos, backend: openssl3,     libc: default }
-          - { target: aarch64-apple-darwin, runner: macos-latest,   os: macos, backend: libressl,     libc: default }
           # ---------- Linux glibc (native runners) ----------
           - { target: x86_64-unknown-linux-gnu,  runner: ubuntu-24.04,     os: linux, backend: botan-full,    libc: gnu }
           - { target: x86_64-unknown-linux-gnu,  runner: ubuntu-24.04,     os: linux, backend: botan-minimal, libc: gnu }
           - { target: x86_64-unknown-linux-gnu,  runner: ubuntu-24.04,     os: linux, backend: openssl3,     libc: gnu }
-          - { target: x86_64-unknown-linux-gnu,  runner: ubuntu-24.04,     os: linux, backend: libressl,     libc: gnu }
           - { target: aarch64-unknown-linux-gnu, runner: ubuntu-24.04-arm, os: linux, backend: botan-full,    libc: gnu }
           - { target: aarch64-unknown-linux-gnu, runner: ubuntu-24.04-arm, os: linux, backend: botan-minimal, libc: gnu }
           - { target: aarch64-unknown-linux-gnu, runner: ubuntu-24.04-arm, os: linux, backend: openssl3,     libc: gnu }
-          - { target: aarch64-unknown-linux-gnu, runner: ubuntu-24.04-arm, os: linux, backend: libressl,     libc: gnu }
           # ---------- Linux musl (Alpine container on native runners) ----------
           - { target: x86_64-unknown-linux-musl,  runner: ubuntu-24.04,     os: linux, backend: botan-full,    libc: musl, container: alpine:latest }
           - { target: x86_64-unknown-linux-musl,  runner: ubuntu-24.04,     os: linux, backend: botan-minimal, libc: musl, container: alpine:latest }
           - { target: x86_64-unknown-linux-musl,  runner: ubuntu-24.04,     os: linux, backend: openssl3,     libc: musl, container: alpine:latest }
-          - { target: x86_64-unknown-linux-musl,  runner: ubuntu-24.04,     os: linux, backend: libressl,     libc: musl, container: alpine:latest }
           - { target: aarch64-unknown-linux-musl, runner: ubuntu-24.04-arm, os: linux, backend: botan-full,    libc: musl, container: alpine:latest }
           - { target: aarch64-unknown-linux-musl, runner: ubuntu-24.04-arm, os: linux, backend: botan-minimal, libc: musl, container: alpine:latest }
           - { target: aarch64-unknown-linux-musl, runner: ubuntu-24.04-arm, os: linux, backend: openssl3,     libc: musl, container: alpine:latest }
-          - { target: aarch64-unknown-linux-musl, runner: ubuntu-24.04-arm, os: linux, backend: libressl,     libc: musl, container: alpine:latest }
     steps:
       - uses: actions/checkout@v7
 
@@ -118,46 +112,28 @@ jobs:
           tar xf openssl-3.5.0.tar.gz
           cd openssl-3.5.0
 
-          if [ "${{ matrix.os }}" = "macos" ]; then
-            CC=clang ./Configure darwin64-arm64-cc no-shared no-tests \
-              --prefix=$RUNNER_TEMP/openssl-install \
-              --libdir=lib
-          elif [ "${{ matrix.libc }}" = "musl" ]; then
-            # Alpine: gcc defaults to musl, just need no-asm to avoid
-            # perlasm path issues on aarch64.
-            ./Configure linux-x86_64 no-shared no-tests no-asm \
-              --prefix=$RUNNER_TEMP/openssl-install \
-              --libdir=lib
-          else
-            ./Configure linux-x86_64 no-shared no-tests \
-              --prefix=$RUNNER_TEMP/openssl-install \
-              --libdir=lib
+          # OpenSSL's ./Configure takes target triples that encode both
+          # the OS and the CPU. Map our target -> OpenSSL target name.
+          case "${{ matrix.target }}" in
+            x86_64-apple-darwin)         OS_TARGET="darwin64-x86_64-cc" ;;
+            aarch64-apple-darwin)        OS_TARGET="darwin64-arm64-cc" ;;
+            x86_64-unknown-linux-*)      OS_TARGET="linux-x86_64" ;;
+            aarch64-unknown-linux-*)     OS_TARGET="linux-aarch64" ;;
+          esac
+
+          EXTRA_FLAGS=""
+          if [ "${{ matrix.libc }}" = "musl" ]; then
+            # Perlasm has issues on aarch64-musl; no-asm sidesteps them at
+            # a ~2x performance cost for the affected primitives.
+            EXTRA_FLAGS="no-asm"
           fi
+
+          ./Configure $OS_TARGET no-shared no-tests no-apps $EXTRA_FLAGS \
+            --prefix=$RUNNER_TEMP/openssl-install \
+            --libdir=lib
           make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
           make install_sw
           du -sh $RUNNER_TEMP/openssl-install/lib/libcrypto.a
-
-      # ---------------------------------------------------------------------
-      # Backend: LibreSSL
-      # ---------------------------------------------------------------------
-      - name: Build LibreSSL (static)
-        if: matrix.backend == 'libressl'
-        run: |
-          cd $RUNNER_TEMP
-          curl -sLO https://ftp.openbsd.org/pub/OpenBSD/LibreSSL/libressl-4.0.0.tar.gz
-          tar xf libressl-4.0.0.tar.gz
-          cd libressl-4.0.0
-
-          mkdir build && cd build
-          cmake .. \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_SHARED_LIBS=OFF \
-            -DLIBRESSL_TESTS=OFF \
-            -DLIBRESSL_APPS=OFF \
-            -DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/libressl-install
-          cmake --build . --parallel $(nproc 2>/dev/null || sysctl -n hw.ncpu)
-          cmake --install .
-          du -sh $RUNNER_TEMP/libressl-install/lib/libcrypto.a
 
       # ---------------------------------------------------------------------
       # Common deps: json-c, zlib, bzip2 (Linux only — macOS uses Homebrew)
@@ -168,10 +144,19 @@ jobs:
           cd $RUNNER_TEMP
           curl -sLO https://s3.amazonaws.com/json-c_releases/releases/json-c-0.17.tar.gz
           tar xf json-c-0.17.tar.gz
+
+          # Alpine ships CMake 4.x, which dropped support for
+          # cmake_minimum_required < 3.5. json-c 0.17 declares 3.0.
+          POLICY_FLAG=""
+          if [ "${{ matrix.libc }}" = "musl" ]; then
+            POLICY_FLAG="-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+          fi
+
           cmake -S json-c-0.17 -B json-c-build \
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-include cstring" \
             -DBUILD_SHARED_LIBS=OFF \
             -DBUILD_TESTING=OFF \
+            $POLICY_FLAG \
             -DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/json-c-install
           cmake --build json-c-build --parallel $(nproc)
           cmake --install json-c-build
@@ -181,9 +166,16 @@ jobs:
           cd $RUNNER_TEMP
           curl -sLO https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz
           tar xf zlib-1.3.1.tar.gz
+
+          POLICY_FLAG=""
+          if [ "${{ matrix.os }}" = "linux" ] && [ "${{ matrix.libc }}" = "musl" ]; then
+            POLICY_FLAG="-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+          fi
+
           cmake -S zlib-1.3.1 -B zlib-build \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_SHARED_LIBS=OFF \
+            $POLICY_FLAG \
             -DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/zlib-install
           cmake --build zlib-build --parallel $(nproc 2>/dev/null || sysctl -n hw.ncpu)
           cmake --install zlib-build
@@ -226,10 +218,6 @@ jobs:
               CRYPTO_BACKEND=openssl
               CRYPTO_PREFIX="$RUNNER_TEMP/openssl-install"
               ;;
-            libressl)
-              CRYPTO_BACKEND=openssl
-              CRYPTO_PREFIX="$RUNNER_TEMP/libressl-install"
-              ;;
           esac
 
           if [ "${{ matrix.os }}" = "macos" ]; then
@@ -244,6 +232,11 @@ jobs:
 
           PREFIX_PATH="$CRYPTO_PREFIX;$JSONC_PREFIX;$ZLIB_PREFIX;$BZIP2_PREFIX"
 
+          POLICY_FLAG=""
+          if [ "${{ matrix.libc }}" = "musl" ]; then
+            POLICY_FLAG="-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+          fi
+
           cmake -S rnp-v0.18.1 -B rnp-build \
             -DCMAKE_C_COMPILER=$CC \
             -DCMAKE_CXX_COMPILER=$CXX \
@@ -253,6 +246,7 @@ jobs:
             -DENABLE_DOC=OFF \
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-include cstring" \
             -DCMAKE_PREFIX_PATH="$PREFIX_PATH" \
+            $POLICY_FLAG \
             -DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/rnp-install
           cmake --build rnp-build --parallel $(nproc 2>/dev/null || sysctl -n hw.ncpu)
           cmake --install rnp-build
@@ -271,7 +265,6 @@ jobs:
             botan-full)    SUFFIX="" ;;
             botan-minimal) SUFFIX="-minimal" ;;
             openssl3)      SUFFIX="-openssl3" ;;
-            libressl)      SUFFIX="-libressl" ;;
           esac
           DEST="prebuilt/$TARGET$SUFFIX"
           mkdir -p $DEST/lib $DEST/include/rnp
@@ -296,10 +289,6 @@ jobs:
             openssl3)
               cp $RUNNER_TEMP/openssl-install/lib/libcrypto.a $DEST/lib/
               cp $RUNNER_TEMP/openssl-install/lib/libssl.a $DEST/lib/
-              ;;
-            libressl)
-              cp $RUNNER_TEMP/libressl-install/lib/libcrypto.a $DEST/lib/
-              cp $RUNNER_TEMP/libressl-install/lib/libssl.a $DEST/lib/
               ;;
           esac
 

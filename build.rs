@@ -34,12 +34,6 @@ compile_error!(
      not implement the PQC algorithms (ML-KEM/ML-DSA/SLH-DSA). Use the \
      Botan-backed `vendored` feature when you need PQC."
 );
-#[cfg(all(feature = "vendored-libressl", feature = "pqc"))]
-compile_error!(
-    "`vendored-libressl` and `pqc` are mutually exclusive — LibreSSL does \
-     not implement the PQC algorithms (ML-KEM/ML-DSA/SLH-DSA). Use the \
-     Botan-backed `vendored` feature when you need PQC."
-);
 
 fn main() {
     // ---------------------------------------------------------------------
@@ -138,14 +132,9 @@ fn main() {
                 VendoredBackend::Botan => {
                     println!("cargo:rustc-link-lib=static=botan-3");
                 }
-                VendoredBackend::OpenSSL3 | VendoredBackend::LibreSSL => {
-                    // OpenSSL and LibreSSL both ship libcrypto + libssl;
-                    // librnp only links against libcrypto at runtime, but
-                    // libssl comes in transitively for some utility code.
+                VendoredBackend::OpenSSL3 => {
                     println!("cargo:rustc-link-lib=static=crypto");
                     println!("cargo:rustc-link-lib=static=ssl");
-                    // OpenSSL/LibreSSL need dl and pthread on Linux for
-                    // runtime symbol resolution and threading.
                     if !cfg!(target_os = "macos") {
                         println!("cargo:rustc-link-lib=dylib=dl");
                         println!("cargo:rustc-link-lib=dylib=pthread");
@@ -194,7 +183,6 @@ enum LinkMode {
 enum VendoredBackend {
     Botan,
     OpenSSL3,
-    LibreSSL,
 }
 
 impl VendoredBackend {
@@ -204,8 +192,6 @@ impl VendoredBackend {
     fn subdir_suffix() -> &'static str {
         if cfg!(feature = "vendored-openssl3") {
             "-openssl3"
-        } else if cfg!(feature = "vendored-libressl") {
-            "-libressl"
         } else if cfg!(feature = "vendored-minimal") {
             "-minimal"
         } else {
@@ -217,8 +203,6 @@ impl VendoredBackend {
     fn from_features() -> Self {
         if cfg!(feature = "vendored-openssl3") {
             VendoredBackend::OpenSSL3
-        } else if cfg!(feature = "vendored-libressl") {
-            VendoredBackend::LibreSSL
         } else {
             VendoredBackend::Botan
         }

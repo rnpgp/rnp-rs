@@ -23,7 +23,6 @@ support is feature-gated. MSRV is **Rust 1.88** (let-chains in
 | `vendored`       | off     | Statically link the bundled `librnp.a` + `libsexpp.a` + `libjson-c.a` + `libbotan-3.a` + `libz.a` + `libbz2.a` from `prebuilt/<target>/`. Fully self-contained — no system crypto deps. Botan backend, full module set. |
 | `vendored-minimal` | off   | Implies `vendored`. Botan backend, minimal module set (drops PQC, SM2/3/4, Twofish/Blowfish/CAST5/IDEA, Ed448/X448, Brainpool, RIPEMD-160, TLS). ~23% smaller `libbotan-3.a`. |
 | `vendored-openssl3` | off | Implies `vendored`. Switches the backend to OpenSSL 3.x — bundles `libcrypto.a` + `libssl.a`. FIPS-capable. Incompatible with `pqc` (OpenSSL has no PQC). |
-| `vendored-libressl` | off | Implies `vendored`. Switches the backend to LibreSSL (OpenSSL 1.1 API fork). Bundles `libcrypto.a` + `libssl.a`. Smallest crypto footprint. Incompatible with `pqc`. |
 | `pqc`            | off     | Pass `-DRNP_EXPERIMENTAL_PQC` to bindgen so PQC algorithm constants and `Encryptor::prefer_pqc_enc_subkey` are exposed. Requires librnp built with `ENABLE_PQC=ON`. Forces Botan backend. |
 | `crypto-refresh` | off     | Pass `-DRNP_EXPERIMENTAL_CRYPTO_REFRESH` to bindgen so v6 keys, crypto-refresh algorithm names, and v6 PKESK/SKESK are exposed.                                       |
 | `logging`        | off     | Gate `Context::set_log_fd` / `set_log_file` for directing librnp's diagnostic output.                                                                                |
@@ -435,20 +434,19 @@ cargo build
 
 ### Vendored (no system librnp)
 
-Four backend variants:
+Three backend variants:
 
 ```sh
 cargo build --features vendored              # Botan, full module set
 cargo build --features vendored-minimal      # Botan, minimal modules
 cargo build --features vendored-openssl3     # OpenSSL 3.x
-cargo build --features vendored-libressl     # LibreSSL (OpenSSL 1.1 API)
 ```
 
 `build.rs` selects the right `prebuilt/<target>-<suffix>/` subdir based on
 the feature combination. Each subdir contains `librnp.a` + `libsexpp.a` +
 `libjson-c.a` + `libz.a` + `libbz2.a` plus the backend's crypto lib
 (`libbotan-3.a` for Botan variants, `libcrypto.a` + `libssl.a` for
-OpenSSL/LibreSSL). Fully self-contained — no system crypto deps.
+OpenSSL). Fully self-contained — no system crypto deps.
 
 **Backend picker**
 
@@ -461,13 +459,9 @@ OpenSSL/LibreSSL). Fully self-contained — no system crypto deps.
 - **`vendored-openssl3`**: OpenSSL 3.x backend. FIPS-capable. Smaller
   than Botan. Choose when targeting FIPS environments or where OpenSSL
   is the approved crypto provider.
-- **`vendored-libressl`**: LibreSSL backend (OpenSSL 1.1 API). Smallest
-  crypto footprint. Choose for size-constrained deployments that don't
-  need PQC or FIPS.
 
-`pqc` is incompatible with everything except plain `vendored` — the
-build emits a clear `compile_error!` if you combine it with any other
-backend.
+`pqc` is incompatible with `vendored-minimal` and `vendored-openssl3` —
+the build emits a clear `compile_error!` if you combine it with either.
 
 **Linux libc**: prebuilts ship for both `gnu` (glibc) and `musl`
 targets. `cargo build --target x86_64-unknown-linux-musl --features
@@ -475,7 +469,7 @@ vendored` works out of the box — the build script keys the prebuilt
 selection off the full target triple.
 
 Pre-builts are produced by `.github/workflows/prebuild.yml` for
-x86_64/aarch64 Linux (gnu + musl) and macOS, across all four backends.
+x86_64/aarch64 Linux (gnu + musl) and macOS, across all three backends.
 
 ## Architecture
 
