@@ -17,19 +17,23 @@ jobs:
           # ---------- macOS (no libc dimension; system libc only) ----------
           - { target: x86_64-apple-darwin,  runner: macos-15-intel, os: macos, backend: botan-full,    libc: default }
           - { target: x86_64-apple-darwin,  runner: macos-15-intel, os: macos, backend: botan-minimal, libc: default }
+          - { target: x86_64-apple-darwin,  runner: macos-15-intel, os: macos, backend: botan-pqc,     libc: default }
           - { target: x86_64-apple-darwin,  runner: macos-15-intel, os: macos, backend: openssl3,     libc: default }
           - { target: x86_64-apple-darwin,  runner: macos-15-intel, os: macos, backend: libressl,     libc: default }
           - { target: aarch64-apple-darwin, runner: macos-latest,   os: macos, backend: botan-full,    libc: default }
           - { target: aarch64-apple-darwin, runner: macos-latest,   os: macos, backend: botan-minimal, libc: default }
+          - { target: aarch64-apple-darwin, runner: macos-latest,   os: macos, backend: botan-pqc,     libc: default }
           - { target: aarch64-apple-darwin, runner: macos-latest,   os: macos, backend: openssl3,     libc: default }
           - { target: aarch64-apple-darwin, runner: macos-latest,   os: macos, backend: libressl,     libc: default }
           # ---------- Linux glibc (native runners) ----------
           - { target: x86_64-unknown-linux-gnu,  runner: ubuntu-24.04,     os: linux, backend: botan-full,    libc: gnu }
           - { target: x86_64-unknown-linux-gnu,  runner: ubuntu-24.04,     os: linux, backend: botan-minimal, libc: gnu }
+          - { target: x86_64-unknown-linux-gnu,  runner: ubuntu-24.04,     os: linux, backend: botan-pqc,     libc: gnu }
           - { target: x86_64-unknown-linux-gnu,  runner: ubuntu-24.04,     os: linux, backend: openssl3,     libc: gnu }
           - { target: x86_64-unknown-linux-gnu,  runner: ubuntu-24.04,     os: linux, backend: libressl,     libc: gnu }
           - { target: aarch64-unknown-linux-gnu, runner: ubuntu-24.04-arm, os: linux, backend: botan-full,    libc: gnu }
           - { target: aarch64-unknown-linux-gnu, runner: ubuntu-24.04-arm, os: linux, backend: botan-minimal, libc: gnu }
+          - { target: aarch64-unknown-linux-gnu, runner: ubuntu-24.04-arm, os: linux, backend: botan-pqc,     libc: gnu }
           - { target: aarch64-unknown-linux-gnu, runner: ubuntu-24.04-arm, os: linux, backend: openssl3,     libc: gnu }
           - { target: aarch64-unknown-linux-gnu, runner: ubuntu-24.04-arm, os: linux, backend: libressl,     libc: gnu }
           # ---------- Linux musl (Alpine container on x86_64 runner only) ----------
@@ -39,6 +43,7 @@ jobs:
           # use the glibc aarch64 variant.
           - { target: x86_64-unknown-linux-musl, runner: ubuntu-24.04, os: linux, backend: botan-full,    libc: musl, container: alpine:latest }
           - { target: x86_64-unknown-linux-musl, runner: ubuntu-24.04, os: linux, backend: botan-minimal, libc: musl, container: alpine:latest }
+          - { target: x86_64-unknown-linux-musl, runner: ubuntu-24.04, os: linux, backend: botan-pqc,     libc: musl, container: alpine:latest }
           - { target: x86_64-unknown-linux-musl, runner: ubuntu-24.04, os: linux, backend: openssl3,     libc: musl, container: alpine:latest }
           - { target: x86_64-unknown-linux-musl, runner: ubuntu-24.04, os: linux, backend: libressl,     libc: musl, container: alpine:latest }
     steps:
@@ -79,8 +84,16 @@ jobs:
           #                  Ed448/X448, Brainpool, RIPEMD-160, TLS, I/O/DB
           #                  glue. Use --disable-modules for resilience
           #                  across Botan versions.
+          # - botan-pqc:     same as botan-full, plus explicitly enables the
+          #                  PQC modules (ml_kem, ml_dsa, slh_dsa_sha2,
+          #                  slh_dsa_shake) so librnp's ENABLE_PQC=ON has
+          #                  symbols to link against.
           if [ "${{ matrix.backend }}" = "botan-minimal" ]; then
             MODULES_FLAG="--disable-modules=unsupported,tls,tls_10,tls_12,tls_13,dtls,http_client,sockets,sqlite3,boost,pkcs11,tpm2,ml_kem,ml_dsa,slh_dsa_sha2,slh_dsa_shake,sm2,sm3,sm4,twofish,blowfish,cast_128,idea,ed448,x448,ripemd_160,brainpool256r1,brainpool384r1,brainpool512r1"
+          elif [ "${{ matrix.backend }}" = "botan-pqc" ]; then
+            # botan-full already includes everything; PQC modules are part
+            # of the default set in Botan 3.x. Just disable unsupported.
+            MODULES_FLAG="--disable-modules=unsupported"
           else
             MODULES_FLAG="--disable-modules=unsupported"
           fi
@@ -252,7 +265,7 @@ jobs:
 
 # Pick the backend prefix and CMake value.
           case "${{ matrix.backend }}" in
-            botan-full|botan-minimal)
+            botan-full|botan-minimal|botan-pqc)
               CRYPTO_BACKEND=botan3
               CRYPTO_PREFIX="$RUNNER_TEMP/botan-install"
               ;;
@@ -265,6 +278,14 @@ jobs:
               CRYPTO_PREFIX="$RUNNER_TEMP/libressl-install"
               ;;
           esac
+
+          # botan-pqc builds librnp with ENABLE_PQC=ON and
+          # ENABLE_CRYPTO_REFRESH=ON so ML-KEM/ML-DSA/SLH-DSA and v6 keys
+          # are exposed in the resulting librnp.a.
+          EXTRA_RNP_FLAGS=""
+          if [ "${{ matrix.backend }}" = "botan-pqc" ]; then
+            EXTRA_RNP_FLAGS="-DENABLE_PQC=ON -DENABLE_CRYPTO_REFRESH=ON"
+          fi
 
           if [ "${{ matrix.os }}" = "macos" ]; then
             JSONC_PREFIX="$(brew --prefix json-c)"
@@ -293,6 +314,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-include cstring" \
             -DCMAKE_PREFIX_PATH="$PREFIX_PATH" \
             $POLICY_FLAG \
+            $EXTRA_RNP_FLAGS \
             -DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/rnp-install
           cmake --build rnp-build --parallel $(nproc 2>/dev/null || sysctl -n hw.ncpu)
           cmake --install rnp-build
@@ -310,6 +332,7 @@ jobs:
 case "$BACKEND" in
             botan-full)    SUFFIX="" ;;
             botan-minimal) SUFFIX="-minimal" ;;
+            botan-pqc)     SUFFIX="-pqc" ;;
             openssl3)      SUFFIX="-openssl3" ;;
             libressl)      SUFFIX="-libressl" ;;
           esac
@@ -330,7 +353,7 @@ case "$BACKEND" in
 
 # Bundle the backend's static crypto library.
           case "$BACKEND" in
-            botan-full|botan-minimal)
+            botan-full|botan-minimal|botan-pqc)
               cp $RUNNER_TEMP/botan-install/lib/libbotan-3.a $DEST/lib/
               ;;
             openssl3)

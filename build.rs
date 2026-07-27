@@ -135,7 +135,7 @@ fn main() {
             println!("cargo:rustc-link-lib=static=bz2");
             println!("cargo:rerun-if-changed={}", static_lib_path.display());
             match backend {
-                VendoredBackend::Botan => {
+                VendoredBackend::Botan | VendoredBackend::BotanPqc => {
                     println!("cargo:rustc-link-lib=static=botan-3");
                 }
                 VendoredBackend::OpenSSL3 | VendoredBackend::LibreSSL => {
@@ -188,6 +188,7 @@ enum LinkMode {
 #[allow(dead_code)]
 enum VendoredBackend {
     Botan,
+    BotanPqc,
     OpenSSL3,
     LibreSSL,
 }
@@ -197,7 +198,9 @@ impl VendoredBackend {
     /// prebuilt variant. Empty for the default (Botan full).
     #[allow(dead_code)]
     fn subdir_suffix() -> &'static str {
-        if cfg!(feature = "vendored-openssl3") {
+        if cfg!(feature = "vendored-pqc") {
+            "-pqc"
+        } else if cfg!(feature = "vendored-openssl3") {
             "-openssl3"
         } else if cfg!(feature = "vendored-libressl") {
             "-libressl"
@@ -210,7 +213,9 @@ impl VendoredBackend {
 
     #[allow(dead_code)]
     fn from_features() -> Self {
-        if cfg!(feature = "vendored-openssl3") {
+        if cfg!(feature = "vendored-pqc") {
+            VendoredBackend::BotanPqc
+        } else if cfg!(feature = "vendored-openssl3") {
             VendoredBackend::OpenSSL3
         } else if cfg!(feature = "vendored-libressl") {
             VendoredBackend::LibreSSL

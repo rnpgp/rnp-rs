@@ -22,10 +22,11 @@ support is feature-gated. MSRV is **Rust 1.88** (let-chains in
 |------------------|---------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `vendored`       | off     | Statically link the bundled `librnp.a` + `libsexpp.a` + `libjson-c.a` + `libbotan-3.a` + `libz.a` + `libbz2.a` from `prebuilt/<target>/`. Fully self-contained — no system crypto deps. Botan backend, full module set. |
 | `vendored-minimal` | off   | Implies `vendored`. Botan backend, minimal module set (drops PQC, SM2/3/4, Twofish/Blowfish/CAST5/IDEA, Ed448/X448, Brainpool, RIPEMD-160, TLS). ~23% smaller `libbotan-3.a`. |
+| `vendored-pqc` | off      | Implies `vendored`, `pqc`, and `crypto-refresh`. Botan backend built with PQC modules (ML-KEM, ML-DSA, SLH-DSA) and librnp built with `-DENABLE_PQC=ON -DENABLE_CRYPTO_REFRESH=ON`. The only variant that exposes PQC + v6 keys end-to-end. |
 | `vendored-openssl3` | off | Implies `vendored`. Switches the backend to OpenSSL 3.x — bundles `libcrypto.a` + `libssl.a`. FIPS-capable. Incompatible with `pqc` (OpenSSL has no PQC). |
 | `vendored-libressl` | off | Implies `vendored`. Switches the backend to LibreSSL (OpenSSL 1.1 API fork). Bundles `libcrypto.a` + `libssl.a`. Incompatible with `pqc`. Build applies a patch to librnp's `findopensslfeatures.c` to use the public `EVP_PKEY_asn1_*` API instead of the OpenSSL-internal `EVP_PKEY_meth_*` family (see [rnpgp/rnp#2440](https://github.com/rnpgp/rnp/issues/2440)). |
-| `pqc`            | off     | Pass `-DRNP_EXPERIMENTAL_PQC` to bindgen so PQC algorithm constants and `Encryptor::prefer_pqc_enc_subkey` are exposed. Requires librnp built with `ENABLE_PQC=ON`. Forces Botan backend. |
-| `crypto-refresh` | off     | Pass `-DRNP_EXPERIMENTAL_CRYPTO_REFRESH` to bindgen so v6 keys, crypto-refresh algorithm names, and v6 PKESK/SKESK are exposed.                                       |
+| `pqc`            | off     | Pass `-DRNP_EXPERIMENTAL_PQC` to bindgen so PQC algorithm constants and `Encryptor::prefer_pqc_enc_subkey` are exposed. Requires librnp built with `ENABLE_PQC=ON`. Implied by `vendored-pqc`; for non-vendored use, pass `--features pqc` and ensure the system librnp was built with PQC on. |
+| `crypto-refresh` | off     | Pass `-DRNP_EXPERIMENTAL_CRYPTO_REFRESH` to bindgen so v6 keys, crypto-refresh algorithm names, and v6 PKESK/SKESK are exposed. Implied by `vendored-pqc`. |
 | `logging`        | off     | Gate `Context::set_log_fd` / `set_log_file` for directing librnp's diagnostic output.                                                                                |
 
 ## Quick start
@@ -435,11 +436,12 @@ cargo build
 
 ### Vendored (no system librnp)
 
-Four backend variants:
+Five backend variants:
 
 ```sh
 cargo build --features vendored              # Botan, full module set
 cargo build --features vendored-minimal      # Botan, minimal modules
+cargo build --features vendored-pqc          # Botan + PQC + crypto-refresh
 cargo build --features vendored-openssl3     # OpenSSL 3.x
 cargo build --features vendored-libressl     # LibreSSL (OpenSSL 1.1 API)
 ```
@@ -452,12 +454,16 @@ OpenSSL). Fully self-contained — no system crypto deps.
 
 **Backend picker**
 
-- **`vendored`** (Botan, full): the only option that supports PQC
-  (`ML-KEM`, `ML-DSA`, `SLH-DSA`). Largest footprint. Use when you need
-  RFC 9580 crypto-refresh + PQC, or just want maximum algorithm coverage.
+- **`vendored`** (Botan, full): use when you want maximum algorithm
+  coverage without PQC.
 - **`vendored-minimal`** (Botan, minimal): same Botan codebase but ~23%
   smaller `libbotan-3.a` — drops TLS, PQC, SM2/3/4, legacy symmetric
   ciphers. Good default for non-PQC use.
+- **`vendored-pqc`** (Botan + PQC + crypto-refresh): the only variant
+  that exposes ML-KEM/ML-DSA/SLH-DSA and v6 keys end-to-end. Botan
+  built with PQC modules, librnp built with ENABLE_PQC=ON and
+  ENABLE_CRYPTO_REFRESH=ON. Also implies the `pqc` and `crypto-refresh`
+  Cargo features so the Rust API surfaces the new types.
 - **`vendored-openssl3`**: OpenSSL 3.x backend. FIPS-capable. Smaller
   than Botan. Choose when targeting FIPS environments or where OpenSSL
   is the approved crypto provider.
@@ -470,7 +476,8 @@ OpenSSL). Fully self-contained — no system crypto deps.
 
 `pqc` is incompatible with `vendored-minimal`, `vendored-openssl3`, and
 `vendored-libressl` — the build emits a clear `compile_error!` if you
-combine it with any of them.
+combine it with any of them. To get PQC, use `vendored-pqc` (which
+implies `pqc` and bundles a PQC-enabled librnp).
 
 **Linux libc**: prebuilts ship for both `gnu` (glibc) and `musl`
 targets. `cargo build --target x86_64-unknown-linux-musl --features
