@@ -13,6 +13,21 @@ are the detailed audit trail for each feature area.
 ### Other
 
 - Release v0.1.8 by @[object]
+- Release v0.1.8 by @[object]
+- Update prebuilt static libraries for all platforms ([#46](https://github.com/rnpgp/rnp-rs/pull/46)) by @[object]
+- Fetch chore/prebuilt-update before force-with-lease by @[object]
+- Switch minimal to --disable-modules for robustness by @[object]
+- Expand minimal Botan module list to satisfy librnp by @[object]
+- Fix zlib download URL (zlib.net blocks CI) by @[object]
+- Always branch off main for the commit job by @[object]
+- Add minimal Botan variant (vendored-minimal feature) by @[object]
+- Bundle zlib + bzip2 statically too by @[object]
+- Bundle Botan statically — fully self-contained prebuilts by @[object]
+- Fix typos flagged by crate-ci/typos by @[object]
+
+### Other
+
+- Release v0.1.8 by @[object]
 - Update prebuilt static libraries for all platforms ([#46](https://github.com/rnpgp/rnp-rs/pull/46)) by @[object]
 - Fetch chore/prebuilt-update before force-with-lease by @[object]
 - Switch minimal to --disable-modules for robustness by @[object]
