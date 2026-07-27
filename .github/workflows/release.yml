@@ -44,9 +44,9 @@ jobs:
           BOTAN_PREFIX="$BUILD_PREFIX/botan"
           mkdir -p "$BUILD_PREFIX"
           cd "$RUNNER_TEMP"
-          curl -sLO https://botan.randombit.net/releases/Botan-3.6.0.tar.xz
-          tar xf Botan-3.6.0.tar.xz
-          cd Botan-3.6.0
+          curl -sLO https://botan.randombit.net/releases/Botan-3.12.0.tar.xz
+          tar xf Botan-3.12.0.tar.xz
+          cd Botan-3.12.0
           python3 configure.py \
             --prefix="$BOTAN_PREFIX" \
             --with-build-dir="$RUNNER_TEMP/botan-build" \
@@ -120,9 +120,9 @@ jobs:
           RNP_PREFIX="$BUILD_PREFIX/rnp"
           mkdir -p "$BUILD_PREFIX"
           cd "$RUNNER_TEMP"
-          curl -sLO https://botan.randombit.net/releases/Botan-3.6.0.tar.xz
-          tar xf Botan-3.6.0.tar.xz
-          cd Botan-3.6.0
+          curl -sLO https://botan.randombit.net/releases/Botan-3.12.0.tar.xz
+          tar xf Botan-3.12.0.tar.xz
+          cd Botan-3.12.0
           python3 configure.py --prefix="$BOTAN_PREFIX" --cc=gcc --cc-bin=g++ \
             --with-build-dir="$RUNNER_TEMP/botan-build" --link-method=copy
           make -f "$RUNNER_TEMP/botan-build/Makefile" -j$(nproc)
