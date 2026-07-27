@@ -282,13 +282,12 @@ jobs:
             # Drop those three lines from _openssl_required_features.
             perl -i -ne 'print unless /^\s*AES-\d+-OCB/' "$RNP_SRCDIR/src/lib/CMakeLists.txt"
 
-            # Patch 3: LibreSSL doesn't have the OPENSSL_secure_* family.
-            # Define shims that fall back to the regular heap with
-            # OPENSSL_cleanse (which LibreSSL DOES ship) for the "clear"
-            # variant. Inject after the openssl/crypto.h include (that's
-            # where OpenSSL declares them). Note: explicit_bzero isn't
-            # reliably in <string.h> across macOS/Linux/musl.
-            perl -i -pe 's/#include <openssl\/crypto\.h>/#include <openssl\/crypto.h>\n#ifdef LIBRESSL_VERSION_NUMBER\nstatic inline void *OPENSSL_secure_zalloc(size_t n) { return calloc(1, n); }\nstatic inline void OPENSSL_secure_clear_free(void *p, size_t n) { if (p) { OPENSSL_cleanse(p, n); free(p); } }\n#endif/' \
+            # Patch 3: LibreSSL doesn't have the OPENSSL_secure_* family
+            # (no secure heap) or CRYPTO_secure_allocated. Define shims:
+            # calloc + OPENSSL_cleanse + free for the allocators, and
+            # always-false for the check (since we never use secure heap).
+            # Inject after the openssl/crypto.h include.
+            perl -i -pe 's/#include <openssl\/crypto\.h>/#include <openssl\/crypto.h>\n#ifdef LIBRESSL_VERSION_NUMBER\nstatic inline void *OPENSSL_secure_zalloc(size_t n) { return calloc(1, n); }\nstatic inline void OPENSSL_secure_clear_free(void *p, size_t n) { if (p) { OPENSSL_cleanse(p, n); free(p); } }\nstatic inline int CRYPTO_secure_allocated(const void *p) { (void)p; return 0; }\n#endif/' \
               "$RNP_SRCDIR/src/lib/crypto/mem.h"
           fi
 
@@ -321,11 +320,15 @@ jobs:
           esac
 
           # botan-pqc builds librnp with ENABLE_PQC=ON and
-          # ENABLE_CRYPTO_REFRESH=ON so ML-K-KEM/ML-DSA/SLH-DSA and v6 keys
-          # are exposed in the resulting librnp.a.
+          # ENABLE_CRYPTO_REFRESH=ON so ML-KEM/ML-DSA/SLH-DSA and v6 keys
+          # are exposed in the resulting librnp.a. Also force-include the
+          # Botan headers that librnp HEAD's crypto/*.cpp files reference
+          # without #include (incomplete-type errors).
           EXTRA_RNP_FLAGS=""
+          EXTRA_CXX_INCLUDES=""
           if [ "${{ matrix.backend }}" = "botan-pqc" ]; then
-            EXTRA_RNP_FLAGS="-DENABLE_PQC=ON -DENABLE_CRYPTO_REFRESH=ON -DCMAKE_CXX_FLAGS=-include\ botan/ec_group.h\ -include\ botan/bigint.h\ -include\ botan/ec_point.h"
+            EXTRA_RNP_FLAGS="-DENABLE_PQC=ON -DENABLE_CRYPTO_REFRESH=ON"
+            EXTRA_CXX_INCLUDES="-include botan/ec_group.h -include botan/bigint.h -include botan/ec_point.h"
           fi
 
           if [ "${{ matrix.os }}" = "macos" ]; then
@@ -352,7 +355,7 @@ jobs:
             -DBUILD_SHARED_LIBS=OFF \
             -DBUILD_TESTING=OFF \
             -DENABLE_DOC=OFF \
-            -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-include cstring" \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-include cstring $EXTRA_CXX_INCLUDES" \
             -DCMAKE_PREFIX_PATH="$PREFIX_PATH" \
             $POLICY_FLAG \
             $EXTRA_RNP_FLAGS \
