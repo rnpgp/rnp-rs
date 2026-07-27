@@ -7,6 +7,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 # Cancel superseded runs (e.g. push-while-PR-open).
 concurrency:
@@ -150,8 +151,8 @@ jobs:
     needs: typos
     runs-on: ubuntu-22.04
     env:
-      BOTAN_PREFIX: ${{ runner.temp }}/rnp-deps/botan
-      RNP_PREFIX: ${{ runner.temp }}/rnp-deps/rnp
+      BOTAN_PREFIX: $RUNNER_TEMP/rnp-deps/botan
+      RNP_PREFIX: $RUNNER_TEMP/rnp-deps/rnp
     steps:
       - uses: actions/checkout@v7
 
