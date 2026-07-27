@@ -276,12 +276,16 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b chore/prebuilt-update
+          # Pull the latest state of chore/prebuilt-update in case a prior
+          # workflow run already pushed (force-with-lease needs an up-to-date
+          # remote ref or it rejects with 'stale info').
+          git fetch origin chore/prebuilt-update || true
           git add prebuilt/
           git diff --staged --quiet && echo "No changes" && exit 0
           git commit -m "chore: update prebuilt static libraries for all platforms
 
           Targets: $(ls prebuilt/ | tr '\n' ' ')"
-          git push --force-with-lease origin chore/prebuilt-update
+          git push --force-with-lease=chore/prebuilt-update:origin/chore/prebuilt-update origin chore/prebuilt-update
 
       - name: Open or update PR
         env:
