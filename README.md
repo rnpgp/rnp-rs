@@ -20,7 +20,7 @@ support is feature-gated. MSRV is **Rust 1.88** (let-chains in
 
 | Feature          | Default | Description                                                                                                                                                          |
 |------------------|---------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `vendored`       | off     | Statically link the bundled `librnp.a` + `libsexpp.a` + `libjson-c.a` from `prebuilt/<target>/`. All you need is Botan 3 at runtime.                                 |
+| `vendored`       | off     | Statically link the bundled `librnp.a` + `libsexpp.a` + `libjson-c.a` + `libbotan-3.a` from `prebuilt/<target>/`. Fully self-contained — no system crypto deps.                                 |
 | `pqc`            | off     | Pass `-DRNP_EXPERIMENTAL_PQC` to bindgen so PQC algorithm constants and `Encryptor::prefer_pqc_enc_subkey` are exposed. Requires librnp built with `ENABLE_PQC=ON`. |
 | `crypto-refresh` | off     | Pass `-DRNP_EXPERIMENTAL_CRYPTO_REFRESH` to bindgen so v6 keys, crypto-refresh algorithm names, and v6 PKESK/SKESK are exposed.                                       |
 | `logging`        | off     | Gate `Context::set_log_fd` / `set_log_file` for directing librnp's diagnostic output.                                                                                |
@@ -437,11 +437,11 @@ cargo build --features vendored
 ```
 
 `build.rs` selects `prebuilt/<target>/` matching your target triple and
-statically links `librnp.a` + `libsexpp.a` + `libjson-c.a`. Botan 3 is
-still dynamic at this stage — install via `brew install botan`
-(macOS) or your distro's `botan` package. Pre-built binaries are produced by
-the `.github/workflows/prebuild.yml` matrix for x86_64/aarch64 Linux
-and macOS (native runners).
+statically links `librnp.a` + `libsexpp.a` + `libjson-c.a` +
+`libbotan-3.a`. The vendored build is fully self-contained — no system
+crypto dependencies required. Pre-builts are produced by
+`.github/workflows/prebuild.yml` for x86_64/aarch64 Linux and macOS
+(native runners).
 
 ## Architecture
 
