@@ -19,23 +19,19 @@ jobs:
           - { target: x86_64-apple-darwin,  runner: macos-15-intel, os: macos, backend: botan-minimal, libc: default }
           - { target: x86_64-apple-darwin,  runner: macos-15-intel, os: macos, backend: botan-pqc,     libc: default }
           - { target: x86_64-apple-darwin,  runner: macos-15-intel, os: macos, backend: openssl3,     libc: default }
-          - { target: x86_64-apple-darwin,  runner: macos-15-intel, os: macos, backend: libressl,     libc: default }
           - { target: aarch64-apple-darwin, runner: macos-latest,   os: macos, backend: botan-full,    libc: default }
           - { target: aarch64-apple-darwin, runner: macos-latest,   os: macos, backend: botan-minimal, libc: default }
           - { target: aarch64-apple-darwin, runner: macos-latest,   os: macos, backend: botan-pqc,     libc: default }
           - { target: aarch64-apple-darwin, runner: macos-latest,   os: macos, backend: openssl3,     libc: default }
-          - { target: aarch64-apple-darwin, runner: macos-latest,   os: macos, backend: libressl,     libc: default }
           # ---------- Linux glibc (native runners) ----------
           - { target: x86_64-unknown-linux-gnu,  runner: ubuntu-24.04,     os: linux, backend: botan-full,    libc: gnu }
           - { target: x86_64-unknown-linux-gnu,  runner: ubuntu-24.04,     os: linux, backend: botan-minimal, libc: gnu }
           - { target: x86_64-unknown-linux-gnu,  runner: ubuntu-24.04,     os: linux, backend: botan-pqc,     libc: gnu }
           - { target: x86_64-unknown-linux-gnu,  runner: ubuntu-24.04,     os: linux, backend: openssl3,     libc: gnu }
-          - { target: x86_64-unknown-linux-gnu,  runner: ubuntu-24.04,     os: linux, backend: libressl,     libc: gnu }
           - { target: aarch64-unknown-linux-gnu, runner: ubuntu-24.04-arm, os: linux, backend: botan-full,    libc: gnu }
           - { target: aarch64-unknown-linux-gnu, runner: ubuntu-24.04-arm, os: linux, backend: botan-minimal, libc: gnu }
           - { target: aarch64-unknown-linux-gnu, runner: ubuntu-24.04-arm, os: linux, backend: botan-pqc,     libc: gnu }
           - { target: aarch64-unknown-linux-gnu, runner: ubuntu-24.04-arm, os: linux, backend: openssl3,     libc: gnu }
-          - { target: aarch64-unknown-linux-gnu, runner: ubuntu-24.04-arm, os: linux, backend: libressl,     libc: gnu }
           # ---------- Linux musl (Alpine container on x86_64 runner only) ----------
           # GitHub Actions limitation: JavaScript actions (checkout, upload-
           # artifact) can't run inside Alpine containers on ARM64 runners.
@@ -45,7 +41,6 @@ jobs:
           - { target: x86_64-unknown-linux-musl, runner: ubuntu-24.04, os: linux, backend: botan-minimal, libc: musl, container: alpine:latest }
           - { target: x86_64-unknown-linux-musl, runner: ubuntu-24.04, os: linux, backend: botan-pqc,     libc: musl, container: alpine:latest }
           - { target: x86_64-unknown-linux-musl, runner: ubuntu-24.04, os: linux, backend: openssl3,     libc: musl, container: alpine:latest }
-          - { target: x86_64-unknown-linux-musl, runner: ubuntu-24.04, os: linux, backend: libressl,     libc: musl, container: alpine:latest }
     steps:
       - uses: actions/checkout@v7
 
@@ -155,28 +150,6 @@ jobs:
           du -sh $RUNNER_TEMP/openssl-install/lib/libcrypto.a
 
       # ---------------------------------------------------------------------
-      # Backend: LibreSSL
-      # ---------------------------------------------------------------------
-      - name: Build LibreSSL (static)
-        if: matrix.backend == 'libressl'
-        run: |
-          cd $RUNNER_TEMP
-          curl -sLO https://ftp.openbsd.org/pub/OpenBSD/LibreSSL/libressl-4.0.0.tar.gz
-          tar xf libressl-4.0.0.tar.gz
-          cd libressl-4.0.0
-
-          mkdir build && cd build
-          cmake .. \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_SHARED_LIBS=OFF \
-            -DLIBRESSL_TESTS=OFF \
-            -DLIBRESSL_APPS=OFF \
-            -DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP/libressl-install
-          cmake --build . --parallel $(nproc 2>/dev/null || sysctl -n hw.ncpu)
-          cmake --install .
-          du -sh $RUNNER_TEMP/libressl-install/lib/libcrypto.a
-
-      # ---------------------------------------------------------------------
       # Common deps: json-c, zlib, bzip2 (Linux only — macOS uses Homebrew)
       # ---------------------------------------------------------------------
       - name: Build json-c (Linux only)
@@ -260,44 +233,21 @@ jobs:
             RNP_SRCDIR="$RUNNER_TEMP/rnp-v0.18.1"
           fi
 
-          # LibreSSL doesn't expose the OpenSSL-internal EVP_PKEY_meth_* family
-          # that librnp's findopensslfeatures.c uses to enumerate algorithms.
-          # Swap it for the public EVP_PKEY_asn1_* counterpart (works on
-          # OpenSSL 1.1, 3.x, and LibreSSL). Upstream tracked in
-          # https://github.com/rnpgp/rnp/issues/2440 — drop this patch once
-          # a librnp release includes the fix.
-          # Use perl instead of sed because BSD sed (macOS) and GNU sed
-          # have incompatible -i syntax.
-          if [ "${{ matrix.backend }}" = "libressl" ]; then
-            # Patch 1: findopensslfeatures.c uses EVP_PKEY_meth_* (internal
-            # OpenSSL API). Swap for the public EVP_PKEY_asn1_* counterpart.
-            perl -i -pe '
-              s/EVP_PKEY_meth_get_count/EVP_PKEY_asn1_get_count/g;
-              s/const EVP_PKEY_METHOD \*pmeth = EVP_PKEY_meth_get0/const EVP_PKEY_ASN1_METHOD *ameth = EVP_PKEY_asn1_get0/g;
-              s/EVP_PKEY_meth_get0_info\(&id, NULL, pmeth\)/EVP_PKEY_asn1_get0_info(\&id, NULL, NULL, NULL, NULL, ameth)/g;
-            ' "$RNP_SRCDIR/cmake/Modules/findopensslfeatures.c"
-
-            # Patch 2: librnp's CMakeLists.txt mandates AES-128-OCB /
-            # AES-192-OCB / AES-256-OCB. LibreSSL doesn't ship OCB mode.
-            # Drop those three lines from _openssl_required_features.
-            perl -i -ne 'print unless /^\s*AES-\d+-OCB/' "$RNP_SRCDIR/src/lib/CMakeLists.txt"
-
-            # Patch 3: LibreSSL doesn't have the OPENSSL_secure_* family
-            # (no secure heap) or CRYPTO_secure_allocated. Define shims:
-            # calloc + OPENSSL_cleanse + free for the allocators, and
-            # always-false for the check (since we never use secure heap).
-            # Inject after the openssl/crypto.h include.
-            perl -i -pe 's/#include <openssl\/crypto\.h>/#include <openssl\/crypto.h>\n#ifdef LIBRESSL_VERSION_NUMBER\nstatic inline void *OPENSSL_secure_zalloc(size_t n) { return calloc(1, n); }\nstatic inline void OPENSSL_secure_clear_free(void *p, size_t n) { if (p) { OPENSSL_cleanse(p, n); free(p); } }\nstatic inline int CRYPTO_secure_allocated(const void *p) { (void)p; return 0; }\n#endif/' \
-              "$RNP_SRCDIR/src/lib/crypto/mem.h"
-          fi
-
-          # botan-pqc uses librnp HEAD which has incomplete-type errors
-          # across multiple crypto/*.cpp files (EC_Group, BigInt,
-          # EC_AffinePoint). Rather than patching each file, force-include
-          # the relevant Botan headers via CMAKE_CXX_FLAGS.
+          # botan-pqc: librnp HEAD references Botan types without the
+          # corresponding #include directives (incomplete-type errors).
+          # Patch each affected file individually — a global -include
+          # via CMAKE_CXX_FLAGS breaks CMake's try-compile checks which
+          # run before the Botan include path is set up.
           if [ "${{ matrix.backend }}" = "botan-pqc" ]; then
+            # ec.cpp uses Botan::EC_Group::from_name
             perl -i -pe 's/#include <botan\/ffi\.h>/#include <botan\/ffi.h>\n#include <botan\/ec_group.h>/' \
               "$RNP_SRCDIR/src/lib/crypto/ec.cpp"
+            # exdsa_ecdhkem.cpp uses EC_Group, BigInt, EC_AffinePoint
+            perl -i -pe 's/#include <botan\/ffi\.h>/#include <botan\/ffi.h>\n#include <botan\/ec_group.h>\n#include <botan\/bigint.h>\n#include <botan\/ec_point.h>/' \
+              "$RNP_SRCDIR/src/lib/crypto/exdsa_ecdhkem.cpp" 2>/dev/null || true
+            # elgamal.cpp uses BigInt
+            perl -i -pe 's/#include <botan\/ffi\.h>/#include <botan\/ffi.h>\n#include <botan\/bigint.h>/' \
+              "$RNP_SRCDIR/src/lib/crypto/elgamal.cpp" 2>/dev/null || true
           fi
 
           ZLIB_PREFIX="$RUNNER_TEMP/zlib-install"
@@ -313,22 +263,14 @@ jobs:
               CRYPTO_BACKEND=openssl
               CRYPTO_PREFIX="$RUNNER_TEMP/openssl-install"
               ;;
-            libressl)
-              CRYPTO_BACKEND=openssl
-              CRYPTO_PREFIX="$RUNNER_TEMP/libressl-install"
-              ;;
           esac
 
           # botan-pqc builds librnp with ENABLE_PQC=ON and
           # ENABLE_CRYPTO_REFRESH=ON so ML-KEM/ML-DSA/SLH-DSA and v6 keys
-          # are exposed in the resulting librnp.a. Also force-include the
-          # Botan headers that librnp HEAD's crypto/*.cpp files reference
-          # without #include (incomplete-type errors).
+          # are exposed in the resulting librnp.a.
           EXTRA_RNP_FLAGS=""
-          EXTRA_CXX_INCLUDES=""
           if [ "${{ matrix.backend }}" = "botan-pqc" ]; then
             EXTRA_RNP_FLAGS="-DENABLE_PQC=ON -DENABLE_CRYPTO_REFRESH=ON"
-            EXTRA_CXX_INCLUDES="-include botan/ec_group.h -include botan/bigint.h -include botan/ec_point.h"
           fi
 
           if [ "${{ matrix.os }}" = "macos" ]; then
@@ -355,7 +297,7 @@ jobs:
             -DBUILD_SHARED_LIBS=OFF \
             -DBUILD_TESTING=OFF \
             -DENABLE_DOC=OFF \
-            -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-include cstring $EXTRA_CXX_INCLUDES" \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-include cstring" \
             -DCMAKE_PREFIX_PATH="$PREFIX_PATH" \
             $POLICY_FLAG \
             $EXTRA_RNP_FLAGS \
@@ -367,7 +309,7 @@ jobs:
       # Collect artifacts. Destination layout:
       #   prebuilt/<target>[-<backend-suffix>]/
       # where the suffix is empty for botan-full, otherwise -minimal /
-      # -openssl3 / -libressl.
+      # -openssl3.
       # ---------------------------------------------------------------------
       - name: Collect artifacts
         run: |
@@ -378,7 +320,6 @@ jobs:
             botan-minimal) SUFFIX="-minimal" ;;
             botan-pqc)     SUFFIX="-pqc" ;;
             openssl3)      SUFFIX="-openssl3" ;;
-            libressl)      SUFFIX="-libressl" ;;
           esac
           DEST="prebuilt/$TARGET$SUFFIX"
           mkdir -p $DEST/lib $DEST/include/rnp
@@ -403,10 +344,6 @@ jobs:
             openssl3)
               cp $RUNNER_TEMP/openssl-install/lib/libcrypto.a $DEST/lib/
               cp $RUNNER_TEMP/openssl-install/lib/libssl.a $DEST/lib/
-              ;;
-            libressl)
-              cp $RUNNER_TEMP/libressl-install/lib/libcrypto.a $DEST/lib/
-              cp $RUNNER_TEMP/libressl-install/lib/libssl.a $DEST/lib/
               ;;
           esac
 

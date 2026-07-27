@@ -34,12 +34,6 @@ compile_error!(
      not implement the PQC algorithms (ML-KEM/ML-DSA/SLH-DSA). Use the \
      Botan-backed `vendored` feature when you need PQC."
 );
-#[cfg(all(feature = "vendored-libressl", feature = "pqc"))]
-compile_error!(
-    "`vendored-libressl` and `pqc` are mutually exclusive — LibreSSL does \
-     not implement the PQC algorithms (ML-KEM/ML-DSA/SLH-DSA). Use the \
-     Botan-backed `vendored` feature when you need PQC."
-);
 
 fn main() {
     // ---------------------------------------------------------------------
@@ -138,7 +132,7 @@ fn main() {
                 VendoredBackend::Botan | VendoredBackend::BotanPqc => {
                     println!("cargo:rustc-link-lib=static=botan-3");
                 }
-                VendoredBackend::OpenSSL3 | VendoredBackend::LibreSSL => {
+                VendoredBackend::OpenSSL3 => {
                     println!("cargo:rustc-link-lib=static=crypto");
                     println!("cargo:rustc-link-lib=static=ssl");
                     if !cfg!(target_os = "macos") {
@@ -190,7 +184,6 @@ enum VendoredBackend {
     Botan,
     BotanPqc,
     OpenSSL3,
-    LibreSSL,
 }
 
 impl VendoredBackend {
@@ -202,8 +195,6 @@ impl VendoredBackend {
             "-pqc"
         } else if cfg!(feature = "vendored-openssl3") {
             "-openssl3"
-        } else if cfg!(feature = "vendored-libressl") {
-            "-libressl"
         } else if cfg!(feature = "vendored-minimal") {
             "-minimal"
         } else {
@@ -217,8 +208,6 @@ impl VendoredBackend {
             VendoredBackend::BotanPqc
         } else if cfg!(feature = "vendored-openssl3") {
             VendoredBackend::OpenSSL3
-        } else if cfg!(feature = "vendored-libressl") {
-            VendoredBackend::LibreSSL
         } else {
             VendoredBackend::Botan
         }

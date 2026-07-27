@@ -24,7 +24,6 @@ support is feature-gated. MSRV is **Rust 1.88** (let-chains in
 | `vendored-minimal` | off   | Implies `vendored`. Botan backend, minimal module set (drops PQC, SM2/3/4, Twofish/Blowfish/CAST5/IDEA, Ed448/X448, Brainpool, RIPEMD-160, TLS). ~23% smaller `libbotan-3.a`. |
 | `vendored-pqc` | off      | Implies `vendored`, `pqc`, and `crypto-refresh`. Botan backend built with PQC modules (ML-KEM, ML-DSA, SLH-DSA) and librnp built with `-DENABLE_PQC=ON -DENABLE_CRYPTO_REFRESH=ON`. The only variant that exposes PQC + v6 keys end-to-end. |
 | `vendored-openssl3` | off | Implies `vendored`. Switches the backend to OpenSSL 3.x — bundles `libcrypto.a` + `libssl.a`. FIPS-capable. Incompatible with `pqc` (OpenSSL has no PQC). |
-| `vendored-libressl` | off | Implies `vendored`. Switches the backend to LibreSSL (OpenSSL 1.1 API fork). Bundles `libcrypto.a` + `libssl.a`. Incompatible with `pqc`. Build applies a patch to librnp's `findopensslfeatures.c` to use the public `EVP_PKEY_asn1_*` API instead of the OpenSSL-internal `EVP_PKEY_meth_*` family (see [rnpgp/rnp#2440](https://github.com/rnpgp/rnp/issues/2440)). |
 | `pqc`            | off     | Pass `-DRNP_EXPERIMENTAL_PQC` to bindgen so PQC algorithm constants and `Encryptor::prefer_pqc_enc_subkey` are exposed. Requires librnp built with `ENABLE_PQC=ON`. Implied by `vendored-pqc`; for non-vendored use, pass `--features pqc` and ensure the system librnp was built with PQC on. |
 | `crypto-refresh` | off     | Pass `-DRNP_EXPERIMENTAL_CRYPTO_REFRESH` to bindgen so v6 keys, crypto-refresh algorithm names, and v6 PKESK/SKESK are exposed. Implied by `vendored-pqc`. |
 | `logging`        | off     | Gate `Context::set_log_fd` / `set_log_file` for directing librnp's diagnostic output.                                                                                |
@@ -436,15 +435,22 @@ cargo build
 
 ### Vendored (no system librnp)
 
-Five backend variants:
+Four backend variants:
 
 ```sh
 cargo build --features vendored              # Botan, full module set
 cargo build --features vendored-minimal      # Botan, minimal modules
 cargo build --features vendored-pqc          # Botan + PQC + crypto-refresh
 cargo build --features vendored-openssl3     # OpenSSL 3.x
-cargo build --features vendored-libressl     # LibreSSL (OpenSSL 1.1 API)
 ```
+
+> **LibreSSL not supported.** librnp 0.18.1's OpenSSL backend uses several
+> OpenSSL-specific APIs that LibreSSL doesn't implement (`EVP_PKEY_meth_*`,
+> `OPENSSL_secure_*`, `BN_RECP_CTX`, `EVP_PKEY_CTX_set_dsa_paramgen_q_bits`,
+> AES-OCB). We filed [rnpgp/rnp#2440](https://github.com/rnpgp/rnp/issues/2440)
+> and [#2441](https://github.com/rnpgp/rnp/issues/2441) upstream to track
+> these. Until librnp adds a LibreSSL compatibility shim, no `vendored-libressl`
+> feature will be available.
 
 `build.rs` selects the right `prebuilt/<target>-<suffix>/` subdir based on
 the feature combination. Each subdir contains `librnp.a` + `libsexpp.a` +
@@ -467,17 +473,11 @@ OpenSSL). Fully self-contained — no system crypto deps.
 - **`vendored-openssl3`**: OpenSSL 3.x backend. FIPS-capable. Smaller
   than Botan. Choose when targeting FIPS environments or where OpenSSL
   is the approved crypto provider.
-- **`vendored-libressl`**: LibreSSL backend (OpenSSL 1.1 API fork).
-  Smallest crypto footprint. Choose for size-constrained deployments
-  that don't need PQC or FIPS. The build patches librnp's algorithm
-  introspection tool to use the public `EVP_PKEY_asn1_*` API since
-  LibreSSL doesn't expose the `EVP_PKEY_meth_*` family — see
-  [rnpgp/rnp#2440](https://github.com/rnpgp/rnp/issues/2440).
 
-`pqc` is incompatible with `vendored-minimal`, `vendored-openssl3`, and
-`vendored-libressl` — the build emits a clear `compile_error!` if you
-combine it with any of them. To get PQC, use `vendored-pqc` (which
-implies `pqc` and bundles a PQC-enabled librnp).
+`pqc` is incompatible with `vendored-minimal`, `vendored-openssl3` —
+the build emits a clear `compile_error!` if you combine it with either.
+To get PQC, use `vendored-pqc` (which implies `pqc` and bundles a
+PQC-enabled librnp).
 
 **Linux libc**: prebuilts ship for both `gnu` (glibc) and `musl`
 targets. `cargo build --target x86_64-unknown-linux-musl --features
