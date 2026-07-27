@@ -263,7 +263,7 @@ jobs:
           ZLIB_PREFIX="$RUNNER_TEMP/zlib-install"
           BZIP2_PREFIX="$RUNNER_TEMP/bzip2-install"
 
-# Pick the backend prefix and CMake value.
+          # Pick the backend prefix and CMake value.
           case "${{ matrix.backend }}" in
             botan-full|botan-minimal|botan-pqc)
               CRYPTO_BACKEND=botan3
@@ -329,7 +329,7 @@ jobs:
         run: |
           TARGET=${{ matrix.target }}
           BACKEND=${{ matrix.backend }}
-case "$BACKEND" in
+          case "$BACKEND" in
             botan-full)    SUFFIX="" ;;
             botan-minimal) SUFFIX="-minimal" ;;
             botan-pqc)     SUFFIX="-pqc" ;;
@@ -351,7 +351,7 @@ case "$BACKEND" in
           cp $RUNNER_TEMP/zlib-install/lib/libz.a $DEST/lib/
           cp $RUNNER_TEMP/bzip2-install/lib/libbz2.a $DEST/lib/
 
-# Bundle the backend's static crypto library.
+          # Bundle the backend's static crypto library.
           case "$BACKEND" in
             botan-full|botan-minimal|botan-pqc)
               cp $RUNNER_TEMP/botan-install/lib/libbotan-3.a $DEST/lib/
