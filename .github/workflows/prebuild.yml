@@ -39,7 +39,7 @@ jobs:
         if: matrix.os == 'macos'
         run: brew install json-c zlib bzip2 cmake
 
-      - name: Build Botan 3.6
+      - name: Build Botan 3.6 (static)
         run: |
           cd $RUNNER_TEMP
           curl -sLO https://botan.randombit.net/releases/Botan-3.12.0.tar.xz
@@ -51,6 +51,7 @@ jobs:
               --with-build-dir=$RUNNER_TEMP/botan-build \
               --link-method=copy \
               --cc=clang --cc-bin=/usr/bin/clang++ \
+              --disable-shared-library \
               --disable-modules=unsupported
           else
             python3 configure.py \
@@ -58,10 +59,13 @@ jobs:
               --with-build-dir=$RUNNER_TEMP/botan-build \
               --link-method=copy \
               --cc=gcc --cc-bin=g++ \
+              --disable-shared-library \
               --disable-modules=unsupported
           fi
           make -f $RUNNER_TEMP/botan-build/Makefile -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
           make -f $RUNNER_TEMP/botan-build/Makefile install
+          echo "=== Botan install tree ==="
+          find $RUNNER_TEMP/botan-install -maxdepth 3 -type f -name "*.a" -o -name "*.so*" -o -name "*.dylib"
 
       - name: Build json-c (Linux only — macOS uses Homebrew)
         if: matrix.os == 'linux'
@@ -127,6 +131,9 @@ jobs:
           else
             cp $RUNNER_TEMP/json-c-install/lib/libjson-c.a prebuilt/$TARGET/lib/
           fi
+
+          # Bundle the static Botan library so consumers don't need a system Botan install.
+          cp $RUNNER_TEMP/botan-install/lib/libbotan-3.a prebuilt/$TARGET/lib/
 
           cp $RUNNER_TEMP/rnp-install/include/rnp/*.h prebuilt/$TARGET/include/rnp/
 
