@@ -284,15 +284,18 @@ jobs:
 
             # Patch 3: LibreSSL doesn't have the OPENSSL_secure_* family.
             # Define shims that fall back to the regular heap with
-            # explicit_bzero for the "clear" variant. Inject after the
-            # openssl/crypto.h include (that's where OpenSSL declares them).
-            perl -i -pe 's/#include <openssl\/crypto\.h>/#include <openssl\/crypto.h>\n#ifdef LIBRESSL_VERSION_NUMBER\n#include <string.h>\nstatic inline void *OPENSSL_secure_zalloc(size_t n) { return calloc(1, n); }\nstatic inline void OPENSSL_secure_clear_free(void *p, size_t n) { if (p) { explicit_bzero(p, n); free(p); } }\n#endif/' \
+            # OPENSSL_cleanse (which LibreSSL DOES ship) for the "clear"
+            # variant. Inject after the openssl/crypto.h include (that's
+            # where OpenSSL declares them). Note: explicit_bzero isn't
+            # reliably in <string.h> across macOS/Linux/musl.
+            perl -i -pe 's/#include <openssl\/crypto\.h>/#include <openssl\/crypto.h>\n#ifdef LIBRESSL_VERSION_NUMBER\nstatic inline void *OPENSSL_secure_zalloc(size_t n) { return calloc(1, n); }\nstatic inline void OPENSSL_secure_clear_free(void *p, size_t n) { if (p) { OPENSSL_cleanse(p, n); free(p); } }\n#endif/' \
               "$RNP_SRCDIR/src/lib/crypto/mem.h"
           fi
 
-          # botan-pqc uses librnp HEAD which has an #include bug in
-          # ec.cpp — uses Botan::EC_Group::from_name without including
-          # <botan/ec_group.h>. Add the include after <botan/ffi.h>.
+          # botan-pqc uses librnp HEAD which has incomplete-type errors
+          # across multiple crypto/*.cpp files (EC_Group, BigInt,
+          # EC_AffinePoint). Rather than patching each file, force-include
+          # the relevant Botan headers via CMAKE_CXX_FLAGS.
           if [ "${{ matrix.backend }}" = "botan-pqc" ]; then
             perl -i -pe 's/#include <botan\/ffi\.h>/#include <botan\/ffi.h>\n#include <botan\/ec_group.h>/' \
               "$RNP_SRCDIR/src/lib/crypto/ec.cpp"
@@ -318,11 +321,11 @@ jobs:
           esac
 
           # botan-pqc builds librnp with ENABLE_PQC=ON and
-          # ENABLE_CRYPTO_REFRESH=ON so ML-KEM/ML-DSA/SLH-DSA and v6 keys
+          # ENABLE_CRYPTO_REFRESH=ON so ML-K-KEM/ML-DSA/SLH-DSA and v6 keys
           # are exposed in the resulting librnp.a.
           EXTRA_RNP_FLAGS=""
           if [ "${{ matrix.backend }}" = "botan-pqc" ]; then
-            EXTRA_RNP_FLAGS="-DENABLE_PQC=ON -DENABLE_CRYPTO_REFRESH=ON"
+            EXTRA_RNP_FLAGS="-DENABLE_PQC=ON -DENABLE_CRYPTO_REFRESH=ON -DCMAKE_CXX_FLAGS=-include\ botan/ec_group.h\ -include\ botan/bigint.h\ -include\ botan/ec_point.h"
           fi
 
           if [ "${{ matrix.os }}" = "macos" ]; then
