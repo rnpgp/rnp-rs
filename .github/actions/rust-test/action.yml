@@ -1,0 +1,55 @@
+# Reusable composite action: checkout → install toolchain → build librnp →
+# cargo build/test. Collapses the 4 near-identical jobs (bench, beta,
+# nightly, miri) into ~6 lines each.
+#
+# Why a composite action, not a reusable workflow:
+# composite actions can be called multiple times in the same job and
+# are easier to compose with per-job setup. Reusable workflows are
+# heavier and require separate triggers.
+name: Run Rust build/test against a locally-built librnp
+
+inputs:
+  toolchain:
+    description: Rust toolchain channel (stable, beta, nightly, 1.88.0)
+    required: true
+  components:
+    description: Comma-separated components to install (clippy, miri, rustfmt, ...)
+    required: false
+    default: ""
+  command:
+    description: cargo subcommand to run (build, test, bench, clippy)
+    required: false
+    default: "test"
+  extra-args:
+    description: Extra args appended after `cargo <command>` (e.g. --features ...)
+    required: false
+    default: ""
+  allow-failure:
+    description: If "true", treat non-zero exit as warning (continue-on-error).
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v7
+
+    - uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ inputs.toolchain }}
+        components: ${{ inputs.components }}
+
+    - name: Install librnp
+      uses: ./.github/actions/install-librnp
+
+    - uses: actions/cache@v6
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: rust-test-${{ inputs.toolchain }}-${{ hashFiles('Cargo.lock') }}
+
+    - name: cargo ${{ inputs.command }}
+      continue-on-error: ${{ inputs.allow-failure == 'true' }}
+      run: cargo ${{ inputs.command }} ${{ inputs.extra-args }} --no-fail-fast

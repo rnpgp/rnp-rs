@@ -1,0 +1,22 @@
+# BotanConfig.cmake.in — template processed by rnp-src's build.rs.
+#
+# Mirrors the BotanConfig.cmake that `make install` would produce, minus
+# the docs/man pages we skip. Substitution variables (filled in by
+# write_botan_cmake_config):
+#
+#   @BOTAN_VERSION@  e.g. 3.12.0
+#   @BOTAN_PREFIX@   staging prefix rnp-src created
+#
+# Adding new target properties here is a one-file change in this template;
+# the Rust glue in build.rs does not need to know about cmake semantics.
+
+set(BOTAN_FOUND TRUE)
+set(BOTAN_VERSION "@BOTAN_VERSION@")
+set(BOTAN_LIBRARY "@BOTAN_PREFIX@/lib/libbotan-3.a")
+set(BOTAN_INCLUDE_DIRS "@BOTAN_PREFIX@/include/botan-3")
+
+add_library(Botan::Botan STATIC IMPORTED GLOBAL)
+set_target_properties(Botan::Botan PROPERTIES
+    IMPORTED_LOCATION "@BOTAN_PREFIX@/lib/libbotan-3.a"
+    INTERFACE_INCLUDE_DIRECTORIES "@BOTAN_PREFIX@/include/botan-3"
+)

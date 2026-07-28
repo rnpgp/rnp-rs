@@ -10,6 +10,15 @@ repository = "https://github.com/rnpgp/rnp-rs"
 homepage = "https://github.com/rnpgp/rnp-rs"
 links = "rnp"
 
+[features]
+default = []
+# Build librnp with ENABLE_PQC=ON and Botan with PQC modules enabled.
+# Consumed by rnp-rs's `pqc` feature; surfaced as `cfg(feature = "pqc")`
+# in this build script.
+pqc = []
+# Build librnp with ENABLE_CRYPTO_REFRESH=ON.
+crypto-refresh = []
+
 [dependencies]
 botan-src = "0.31200.0"
 

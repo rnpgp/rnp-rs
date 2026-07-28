@@ -155,58 +155,18 @@ jobs:
     name: pqc + crypto-refresh
     needs: typos
     runs-on: ubuntu-22.04
-    env:
-      BOTAN_PREFIX: $RUNNER_TEMP/rnp-deps/botan
-      RNP_PREFIX: $RUNNER_TEMP/rnp-deps/rnp
     steps:
       - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
 
+      # rnp-src + botan-src build Botan (with PQC modules) + librnp from
+      # source when `pqc,crypto-refresh` are on. No more hand-rolled
+      # cmake invocations duplicated from the vendored job.
       - name: Install build deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y libjson-c-dev zlib1g-dev libbz2-dev cmake \
-            python3 python3-pip xz-utils
-
-      - name: Build Botan 3.6 with PQC
-        run: |
-          mkdir -p $RUNNER_TEMP/rnp-deps
-          cd $RUNNER_TEMP
-          curl -sLO https://botan.randombit.net/releases/Botan-3.6.0.tar.xz
-          tar xf Botan-3.6.0.tar.xz
-          cd Botan-3.6.0
-          python3 configure.py \
-            --prefix=$BOTAN_PREFIX \
-            --with-build-dir=$RUNNER_TEMP/botan-build \
-            --link-method=copy \
-            --cc=gcc --cc-bin=g++ \
-            --enable-modules=ml_kem,ml_dsa,slh_dsa_sha2,slh_dsa_shake,ecdh,ecdsa,ed25519,ed448,x25519,x448,sm2,sm3,sm4,rsa,dsa,elgamal,argon2,sha1,sha2_32,sha2_64,sha3,keccak,aes,chacha20poly1305,gcm,ocb,xts,twofish,blowfish,cast128,camellia,idea,des,hmac,hmac_drbg,hkdf,pbkdf2,pgp_s2k,auto_rng,system_rng,chacha_rng,ffi
-          make -f $RUNNER_TEMP/botan-build/Makefile -j$(nproc)
-          make -f $RUNNER_TEMP/botan-build/Makefile install
-
-      - name: Checkout rnp
-        uses: actions/checkout@v7
-        with:
-          repository: rnpgp/rnp
-          ref: main
-          path: rnp-src
-          submodules: recursive
-
-      - name: Build rnp with ENABLE_PQC=ON
-        run: |
-          cmake -S rnp-src -B rnp-src/build \
-            -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ \
-            -DCRYPTO_BACKEND=botan3 \
-            -DENABLE_PQC=ON \
-            -DENABLE_CRYPTO_REFRESH=ON \
-            -DBUILD_SHARED_LIBS=ON \
-            -DBUILD_TESTING=OFF \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=$RNP_PREFIX \
-            -DCMAKE_PREFIX_PATH=$BOTAN_PREFIX
-          cmake --build rnp-src/build --parallel $(nproc)
-          cmake --install rnp-src/build
+          sudo apt-get install -y cmake build-essential python3 curl
 
       - uses: actions/cache@v6
         with:
@@ -214,14 +174,10 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: pqc-${{ hashFiles('Cargo.lock') }}
+          key: pqc-vendored-${{ hashFiles('Cargo.lock', 'rnp-src/build.rs') }}
 
-      - name: cargo test --features pqc,crypto-refresh
-        run: |
-          export RNP_INCLUDE_DIR=$RNP_PREFIX/include
-          export RNP_LIB_DIR=$RNP_PREFIX/lib
-          export LD_LIBRARY_PATH=$RNP_PREFIX/lib:$BOTAN_PREFIX/lib
-          cargo test --features pqc,crypto-refresh --no-fail-fast
+      - name: cargo test --features vendored,pqc,crypto-refresh
+        run: cargo test --features vendored,pqc,crypto-refresh --no-fail-fast
 
   # ---------------------------------------------------------------------
   # cargo-deny: license and security advisory checks.
@@ -262,34 +218,58 @@ jobs:
         run: cargo semver-checks check-release 2>&1 || true
 
   # ---------------------------------------------------------------------
-  # Windows build — validate the binding against a vcpkg-installed
-  # librnp. Currently allow-failure until vcpkg coverage is confirmed.
+  # Windows build — install deps via vcpkg (botan, json-c, zlib, bzip2
+  # are all in the vcpkg registry), then build librnp 0.18.1 from
+  # source via cmake + the vcpkg toolchain file. rnp itself is NOT in
+  # vcpkg, hence the manual build.
+  #
+  # continue-on-error until we confirm vcpkg + cmake + MSVC reproducibly
+  # link the resulting librnp into the Rust binary.
   # ---------------------------------------------------------------------
   windows:
     name: windows
     needs: typos
     runs-on: windows-2022
     continue-on-error: true
+    env:
+      VCPKG_DEFAULT_TRIPLET: x64-windows
+      RNP_PREFIX: ${{ runner.temp }}\rnp-install
     steps:
       - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Install librnp via vcpkg
+      - name: Install deps via vcpkg
         run: |
-          vcpkg install rnp librnp
+          vcpkg install botan json-c zlib bzip2
           echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> $GITHUB_ENV
+
+      - name: Download and build librnp 0.18.1
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Invoke-WebRequest -Uri "https://github.com/rnpgp/rnp/releases/download/v0.18.1/rnp-v0.18.1.tar.gz" -OutFile "rnp.tar.gz"
+          tar xzf rnp.tar.gz
+          cmake -S rnp-v0.18.1 -B rnp-v0.18.1/build `
+            -DCRYPTO_BACKEND=botan3 `
+            -DBUILD_SHARED_LIBS=ON `
+            -DBUILD_TESTING=OFF `
+            -DCMAKE_BUILD_TYPE=Release `
+            "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            "-DCMAKE_INSTALL_PREFIX=$env:RNP_PREFIX"
+          cmake --build rnp-v0.18.1/build --config Release --parallel ($env:NUMBER_OF_PROCESSORS)
+          cmake --install rnp-v0.18.1/build --config Release
 
       - name: cargo build (Windows)
         env:
-          RNP_INCLUDE_DIR: "$VCPKG_INSTALLATION_ROOT/installed/x64-windows/include"
-          RNP_LIB_DIR: "$VCPKG_INSTALLATION_ROOT/installed/x64-windows/lib"
+          RNP_INCLUDE_DIR: ${{ runner.temp }}\rnp-install\include
+          RNP_LIB_DIR: ${{ runner.temp }}\rnp-install\lib
         run: cargo build --all-targets
 
       - name: cargo test (Windows)
         env:
-          RNP_INCLUDE_DIR: "$VCPKG_INSTALLATION_ROOT/installed/x64-windows/include"
-          RNP_LIB_DIR: "$VCPKG_INSTALLATION_ROOT/installed/x64-windows/lib"
+          RNP_INCLUDE_DIR: ${{ runner.temp }}\rnp-install\include
+          RNP_LIB_DIR: ${{ runner.temp }}\rnp-install\lib
         run: cargo test --no-fail-fast
 
   # ---------------------------------------------------------------------

@@ -39,6 +39,7 @@ rnp-src = { version = "0.1", path = "rnp-src", optional = true }
 
 [build-dependencies]
 bindgen = "0.72"
+pkg-config = "0.3"
 
 [dev-dependencies]
 proptest = "1"
@@ -68,10 +69,10 @@ vendored = ["dep:rnp-src"]
 # Implies `vendored`. (Future: pass module filtering to rnp-src.)
 vendored-minimal = ["vendored"]
 # Expose PQC algorithm constants in bindgen. When combined with
-# `vendored`, also builds librnp with ENABLE_PQC=ON.
-pqc = []
+# `vendored`, also builds librnp with ENABLE_PQC=ON (forwarded to rnp-src).
+pqc = ["rnp-src?/pqc"]
 # Expose v6 key / crypto-refresh features in bindgen.
-crypto-refresh = []
+crypto-refresh = ["rnp-src?/crypto-refresh"]
 # Enable `Context::set_log_fd` / `set_log_file`.
 logging = []
 # Pull in sequoia-openpgp for cross-validation tests.
