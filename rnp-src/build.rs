@@ -72,6 +72,16 @@ fn main() {
         }
     }
 
+    // Windows + MSYS2 UCRT64: botan-src's configure.py auto-detects MSVC
+    // by default and fails ("could not find 'cl'"). Force gcc (mingw)
+    // so it picks the MSYS2 toolchain.
+    if cfg!(target_os = "windows") {
+        unsafe {
+            env::set_var("BOTAN_CONFIGURE_CC", "gcc");
+            env::set_var("BOTAN_CONFIGURE_CC_BIN", "g++");
+        }
+    }
+
     // PQC / crypto-refresh: botan-src reads BOTAN_CONFIGURE_* env vars
     // and forwards them as configure.py flags. Setting ENABLE_MODULES
     // here makes the post-quantum algorithms available; rnp's cmake
@@ -353,6 +363,20 @@ fn prepare_librnp_head(src_dir: &Path) -> PathBuf {
                 ])
                 .arg(&rnp_src),
             "git clone rnp HEAD",
+        );
+        // Apply local compatibility patches. librnp HEAD's ec.cpp uses
+        // Botan::EC_Group::from_name() but doesn't include <botan/ec_group.h>
+        // — works with older Botan where ecdh.h transitively included it,
+        // fails against Botan 3.12. The patch adds the explicit include.
+        let patch = include_str!("patches/librnp-head-botan-3.12-ec-group-include.patch");
+        let patch_path = src_dir.join("librnp-head-botan-3.12.patch");
+        fs::write(&patch_path, patch).expect("write librnp patch");
+        run(
+            Command::new("git")
+                .args(["apply"])
+                .arg(&patch_path)
+                .current_dir(&rnp_src),
+            "apply librnp HEAD patch",
         );
     } else {
         eprintln!(

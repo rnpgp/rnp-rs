@@ -1,0 +1,14 @@
+--- a/src/lib/crypto/ec.cpp
++++ b/src/lib/crypto/ec.cpp
+@@ -36,6 +36,7 @@
+ #if defined(ENABLE_CRYPTO_REFRESH) || defined(ENABLE_PQC)
+ #include "x25519_x448.h"
+ #include "ed25519_ed448.h"
+ #include "botan_utils.hpp"
+ #include "botan/bigint.h"
+ #include "botan/ecdh.h"
++#include "botan/ec_group.h"
+ #endif
+
+--
+2.39.3
