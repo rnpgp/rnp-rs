@@ -104,6 +104,7 @@ fn main() {
 enum LinkMode {
     System,
     Explicit,
+    #[allow(dead_code)]
     Vendored,
 }
 
@@ -134,7 +135,12 @@ fn locate_librnp() -> (PathBuf, Option<PathBuf>, LinkMode, Vec<PathBuf>) {
                 extra_lib_dirs.push(PathBuf::from(p));
             }
         }
-        return (include_dir, Some(lib_dir), LinkMode::Vendored, extra_lib_dirs);
+        return (
+            include_dir,
+            Some(lib_dir),
+            LinkMode::Vendored,
+            extra_lib_dirs,
+        );
     }
 
     #[allow(unreachable_code)]

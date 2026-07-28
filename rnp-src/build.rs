@@ -160,15 +160,9 @@ fn main() {
     println!("cargo:lib_dir={}", rnp_lib.display());
     println!("cargo:include_dir={}", rnp_inc.display());
     println!("cargo:botan_lib_dir={}", botan_lib_dir.display());
-    println!(
-        "cargo:jsonc_lib_dir={}",
-        jsonc_prefix.join("lib").display()
-    );
+    println!("cargo:jsonc_lib_dir={}", jsonc_prefix.join("lib").display());
     println!("cargo:zlib_lib_dir={}", zlib_prefix.join("lib").display());
-    println!(
-        "cargo:bzip2_lib_dir={}",
-        bzip2_prefix.join("lib").display()
-    );
+    println!("cargo:bzip2_lib_dir={}", bzip2_prefix.join("lib").display());
 }
 
 // --- Utility functions ---
