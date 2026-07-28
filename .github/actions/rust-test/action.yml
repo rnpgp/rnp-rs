@@ -32,8 +32,9 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: actions/checkout@v7
-
+    # NOTE: callers MUST run actions/checkout@v7 before this action —
+    # GitHub needs to find .github/actions/install-librnp on disk before
+    # it can resolve this composite action's local-action reference.
     - uses: dtolnay/rust-toolchain@stable
       with:
         toolchain: ${{ inputs.toolchain }}

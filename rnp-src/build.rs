@@ -8,8 +8,13 @@
 //
 // Pure logic (URL composition, dep registry, links contract) lives in
 // src/links.rs, shared with lib.rs via `#[path]` so it's unit-testable.
+// The full module is imported here, even though build.rs only uses a
+// subset (CmakeDep, Deps, JSON_C, ZLIB); the rest is exercised by
+// lib.rs's test suite. `#[allow(dead_code)]` silences the unused-item
+// warnings for the parts build.rs doesn't touch.
 
 #[path = "src/links.rs"]
+#[allow(dead_code)]
 mod links;
 
 use links::{CmakeDep, Deps, JSON_C, ZLIB};

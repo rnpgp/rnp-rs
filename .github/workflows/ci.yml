@@ -190,7 +190,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
-          arguments: check
+          command: check
 
   # ---------------------------------------------------------------------
   # cargo-semver-checks: catch breaking API changes against the
@@ -332,6 +332,7 @@ jobs:
     runs-on: ubuntu-22.04
     continue-on-error: true
     steps:
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/rust-test
         with:
           toolchain: beta
@@ -349,6 +350,7 @@ jobs:
     runs-on: ubuntu-22.04
     continue-on-error: true
     steps:
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/rust-test
         with:
           toolchain: nightly

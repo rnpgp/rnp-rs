@@ -179,9 +179,9 @@ fn locate_via_pkg_config() -> Option<LibrnpLocation> {
     let lib = pkg_config::Config::new().statik(true).probe("rnp").ok()?;
     let include_dir = lib.include_paths.first()?.clone();
     let lib_dir = lib.link_paths.first().cloned();
-    // pkg-config returns libs in link order; `rnp` itself is usually
-    // first, with transitive deps following. Convert each `-lfoo` /
-    // `-l:libfoo.a` directive to a cargo link-lib.
+    // pkg-config's `libs` field carries bare library names (without
+    // the `-l` prefix). Convert each into our LinkLib shape so
+    // emit_link_directives can iterate uniformly.
     let extra_link_libs: Vec<LinkLib> = lib
         .libs
         .iter()
@@ -196,14 +196,18 @@ fn locate_via_pkg_config() -> Option<LibrnpLocation> {
     })
 }
 
-/// Parse a pkg-config `-l` directive into a (name, kind) pair.
-/// Returns None for things we can't represent (e.g. `-framework IOKit`).
+/// Parse a bare library name from pkg-config's `libs` field into a
+/// (name, kind) pair. Returns None for things we can't represent
+/// (e.g. framework references, full paths).
+///
+/// pkg-config's `libs` is a Vec<String> of names like `rnp`, `z`,
+/// `bz2` — no `-l` prefix. The static variant is encoded as
+/// `lib<name>.a` which we strip back to `<name>`.
 #[cfg(not(feature = "vendored"))]
 fn parse_pkg_config_lib(s: &str) -> Option<LinkLib> {
-    let name = s.strip_prefix("-l")?;
-    let (kind, name) = match name.strip_prefix("lib").and_then(|n| n.strip_suffix(".a")) {
+    let (kind, name) = match s.strip_prefix("lib").and_then(|n| n.strip_suffix(".a")) {
         Some(basename) => (LinkLibKind::Static, basename.to_string()),
-        None => (LinkLibKind::Dylib, name.to_string()),
+        None => (LinkLibKind::Dylib, s.to_string()),
     };
     Some(LinkLib { name, kind })
 }
