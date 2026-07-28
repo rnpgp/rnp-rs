@@ -1,36 +1,39 @@
 // rnp-src build script.
 //
-// When the `compile` feature is on (set by rnp-rs's `vendored` feature),
-// this downloads and compiles librnp + Botan + json-c + zlib + bzip2
-// from source. When `compile` is off (e.g., during `cargo publish
-// --verify`), this is a no-op — dummy paths are emitted so the lib.rs
-// compiles but the paths won't be used (rnp-src without `compile` is
-// only useful as a metadata package).
+// Downloads and compiles librnp + Botan + json-c + zlib + bzip2 from
+// source. During `cargo publish --verify`, detects the packaging
+// environment (Cargo.toml.orig present) and skips compilation so
+// verification is fast. When used as a real dependency by rnp-rs,
+// the full compilation runs.
 
 use std::env;
 use std::path::PathBuf;
 use std::process::Command;
 
-#[cfg(feature = "compile")]
 const RNP_VERSION: &str = "0.18.1";
-#[cfg(feature = "compile")]
 const JSON_C_VERSION: &str = "0.17";
-#[cfg(feature = "compile")]
 const ZLIB_VERSION: &str = "1.3.1";
-#[cfg(feature = "compile")]
 const BZIP2_VERSION: &str = "1.0.8";
 
-#[cfg(not(feature = "compile"))]
-fn main() {
-    // No-op during cargo publish --verify.
-    // rnp-src without `compile` is a metadata-only package.
-    println!("cargo:rustc-env=RNP_SRC_LIB_DIR=");
-    println!("cargo:rustc-env=RNP_SRC_INCLUDE_DIR=");
-    println!("cargo:rustc-env=RNP_SRC_BOTAN_LIB_DIR=");
+/// During `cargo publish --verify`, cargo extracts the package to
+/// target/package/<name>-<version>/ which contains Cargo.toml.orig.
+/// Real builds (from source or as a dependency) don't have this file.
+fn is_packaging() -> bool {
+    PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap_or_default())
+        .join("Cargo.toml.orig")
+        .exists()
 }
 
-#[cfg(feature = "compile")]
 fn main() {
+    // Skip heavy compilation during cargo publish --verify.
+    // The CI smoke build already verifies correctness.
+    if is_packaging() {
+        println!("cargo:rustc-env=RNP_SRC_VERSION={RNP_VERSION}");
+        println!("cargo:lib_dir=");
+        println!("cargo:include_dir=");
+        return;
+    }
+
     let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"));
     let src_dir = out_dir.join("src");
     let prefix = out_dir.join("install");

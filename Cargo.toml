@@ -64,7 +64,7 @@ default = []
 # source at build time via the rnp-src crate. Fully self-contained — no
 # system librnp/Botan needed. First build takes ~10 min; cached in
 # OUT_DIR after that. Requires: C/C++ compiler, cmake, python3, curl, tar.
-vendored = ["dep:rnp-src", "rnp-src/compile"]
+vendored = ["dep:rnp-src"]
 # Implies `vendored`. (Future: pass module filtering to rnp-src.)
 vendored-minimal = ["vendored"]
 # Expose PQC algorithm constants in bindgen. When combined with

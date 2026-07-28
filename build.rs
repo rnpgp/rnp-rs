@@ -112,7 +112,7 @@ fn locate_librnp() -> (PathBuf, Option<PathBuf>, LinkMode) {
     #[cfg(feature = "vendored")]
     {
         let lib_dir = PathBuf::from(env::var("DEP_RNP_LIB_DIR").expect(
-            "DEP_RNP_LIB_DIR not set — rnp-src's build.rs didn't run with compile feature"
+            "DEP_RNP_LIB_DIR not set — rnp-src's build.rs didn't emit lib_dir"
         ));
         let include_dir = PathBuf::from(env::var("DEP_RNP_INCLUDE_DIR").expect(
             "DEP_RNP_INCLUDE_DIR not set"
