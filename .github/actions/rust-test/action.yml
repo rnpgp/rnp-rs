@@ -34,7 +34,7 @@ runs:
   steps:
     - uses: actions/checkout@v7
 
-    - uses: dtolnay/rust-toolchain@master
+    - uses: dtolnay/rust-toolchain@stable
       with:
         toolchain: ${{ inputs.toolchain }}
         components: ${{ inputs.components }}
@@ -51,5 +51,6 @@ runs:
         key: rust-test-${{ inputs.toolchain }}-${{ hashFiles('Cargo.lock') }}
 
     - name: cargo ${{ inputs.command }}
+      shell: bash
       continue-on-error: ${{ inputs.allow-failure == 'true' }}
       run: cargo ${{ inputs.command }} ${{ inputs.extra-args }} --no-fail-fast
