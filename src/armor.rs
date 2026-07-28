@@ -1,8 +1,8 @@
 //! ASCII-armor and dearmor wrappers, plus content-type sniffing.
 //!
-//! These wrap [`rnp_enarmor`], [`rnp_dearmor`], and [`rnp_guess_contents`].
-//! For streaming armor wrapping of an existing [`Output`], see
-//! [`crate::Output::to_armor`].
+//! These wrap the upstream C functions `rnp_enarmor`, `rnp_dearmor`,
+//! and `rnp_guess_contents`. For streaming armor wrapping of an
+//! existing [`Output`], see [`crate::Output::to_armor`].
 
 use crate::error::{Result, check};
 use crate::ffi;
