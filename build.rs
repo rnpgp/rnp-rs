@@ -87,6 +87,7 @@ struct LinkLib {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)] // only constructed in the non-vendored build path
 enum LinkLibKind {
     Dylib,
     Static,

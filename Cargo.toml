@@ -40,6 +40,11 @@ rnp-src = { version = "0.1", path = "rnp-src", optional = true }
 [build-dependencies]
 bindgen = "0.72"
 pkg-config = "0.3"
+# rnp-src is also a build-dependency: rnp-rs's build.rs reads the
+# `links::DEPS` registry and the `links::lib_dir_env_var` helper to stay
+# in sync with whatever deps rnp-src decides to build. The `vendored`
+# Cargo feature pulls this in at build time.
+rnp-src = { version = "0.1", path = "rnp-src", optional = true }
 
 [dev-dependencies]
 proptest = "1"
