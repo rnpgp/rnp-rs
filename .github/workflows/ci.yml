@@ -155,18 +155,67 @@ jobs:
     name: pqc + crypto-refresh
     needs: typos
     runs-on: ubuntu-22.04
+    env:
+      # Use the GitHub Actions context, not the shell variable form.
+      # `$RUNNER_TEMP` at YAML env: level is a literal; bash does not
+      # recursively expand it.
+      BOTAN_PREFIX: ${{ runner.temp }}/rnp-deps/botan
+      RNP_PREFIX: ${{ runner.temp }}/rnp-deps/rnp
     steps:
       - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
 
-      # rnp-src + botan-src build Botan (with PQC modules) + librnp from
-      # source when `pqc,crypto-refresh` are on. No more hand-rolled
-      # cmake invocations duplicated from the vendored job.
       - name: Install build deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake build-essential python3 curl
+          sudo apt-get install -y libjson-c-dev zlib1g-dev libbz2-dev cmake \
+            python3 python3-pip xz-utils
+
+      # librnp 0.18.1 (what rnp-src currently bundles) is incompatible
+      # with Botan 3.12 (what botan-src bundles): EC_Group/EC_Point APIs
+      # changed between 3.6 and 3.12. PQC testing therefore uses Botan 3.6
+      # + librnp HEAD (where the PQC + crypto-refresh features actually
+      # live). When rnp-src moves to librnp HEAD + botan-src 3.6, this
+      # job can collapse to `cargo test --features vendored,pqc,crypto-refresh`.
+      - name: Build Botan 3.6 with PQC
+        run: |
+          mkdir -p "$RUNNER_TEMP/rnp-deps"
+          cd "$RUNNER_TEMP"
+          curl -sLO https://botan.randombit.net/releases/Botan-3.6.0.tar.xz
+          tar xf Botan-3.6.0.tar.xz
+          cd Botan-3.6.0
+          python3 configure.py \
+            --prefix="$BOTAN_PREFIX" \
+            --with-build-dir="$RUNNER_TEMP/botan-build" \
+            --link-method=copy \
+            --cc=gcc --cc-bin=g++ \
+            --enable-modules=ml_kem,ml_dsa,slh_dsa_sha2,slh_dsa_shake,ecdh,ecdsa,ed25519,ed448,x25519,x448,sm2,sm3,sm4,rsa,dsa,elgamal,argon2,sha1,sha2_32,sha2_64,sha3,keccak,aes,chacha20poly1305,gcm,ocb,xts,twofish,blowfish,cast128,camellia,idea,des,hmac,hmac_drbg,hkdf,pbkdf2,pgp_s2k,auto_rng,system_rng,chacha_rng,ffi
+          make -f "$RUNNER_TEMP/botan-build/Makefile" -j$(nproc)
+          make -f "$RUNNER_TEMP/botan-build/Makefile" install
+
+      - name: Checkout rnp HEAD
+        uses: actions/checkout@v7
+        with:
+          repository: rnpgp/rnp
+          ref: main
+          path: rnp-head
+          submodules: recursive
+
+      - name: Build rnp HEAD with ENABLE_PQC=ON
+        run: |
+          cmake -S rnp-head -B rnp-head/build \
+            -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ \
+            -DCRYPTO_BACKEND=botan3 \
+            -DENABLE_PQC=ON \
+            -DENABLE_CRYPTO_REFRESH=ON \
+            -DBUILD_SHARED_LIBS=ON \
+            -DBUILD_TESTING=OFF \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$RNP_PREFIX" \
+            -DCMAKE_PREFIX_PATH="$BOTAN_PREFIX"
+          cmake --build rnp-head/build --parallel $(nproc)
+          cmake --install rnp-head/build
 
       - uses: actions/cache@v6
         with:
@@ -174,10 +223,14 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: pqc-vendored-${{ hashFiles('Cargo.lock', 'rnp-src/build.rs') }}
+          key: pqc-${{ hashFiles('Cargo.lock') }}
 
-      - name: cargo test --features vendored,pqc,crypto-refresh
-        run: cargo test --features vendored,pqc,crypto-refresh --no-fail-fast
+      - name: cargo test --features pqc,crypto-refresh
+        run: |
+          export RNP_INCLUDE_DIR="$RNP_PREFIX/include"
+          export RNP_LIB_DIR="$RNP_PREFIX/lib"
+          export LD_LIBRARY_PATH="$RNP_PREFIX/lib:$BOTAN_PREFIX/lib"
+          cargo test --features pqc,crypto-refresh --no-fail-fast
 
   # ---------------------------------------------------------------------
   # cargo-deny: license and security advisory checks.

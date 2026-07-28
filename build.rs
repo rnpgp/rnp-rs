@@ -319,17 +319,20 @@ fn generate_bindings(include_dir: &std::path::Path) -> bindgen::Bindings {
 fn emit_link_directives(loc: &LibrnpLocation) {
     match loc.link_mode {
         LinkMode::System | LinkMode::Explicit => {
-            if loc.extra_link_libs.is_empty() {
-                // No pkg-config info; fall back to plain `dylib=rnp`.
-                println!("cargo:rustc-link-lib=dylib=rnp");
-            } else {
-                for lib in &loc.extra_link_libs {
-                    let kind = match lib.kind {
-                        LinkLibKind::Dylib => "dylib",
-                        LinkLibKind::Static => "static",
-                    };
-                    println!("cargo:rustc-link-lib={kind}={}", lib.name);
+            // rnp itself is always required.
+            println!("cargo:rustc-link-lib=dylib=rnp");
+            // When pkg-config or our fallback surfaced transitive deps
+            // (libz, libbz2, libbotan-3, …), emit them after rnp so the
+            // linker resolves them in dependency order.
+            for lib in &loc.extra_link_libs {
+                if lib.name == "rnp" {
+                    continue; // already emitted above
                 }
+                let kind = match lib.kind {
+                    LinkLibKind::Dylib => "dylib",
+                    LinkLibKind::Static => "static",
+                };
+                println!("cargo:rustc-link-lib={kind}={}", lib.name);
             }
         }
         LinkMode::Vendored => {
