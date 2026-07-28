@@ -235,6 +235,11 @@ jobs:
         with:
           msystem: UCRT64
           update: true
+          # Inherit Windows PATH so cargo/rustc (installed by
+          # dtolnay/rust-toolchain above) are visible inside the MSYS2
+          # shell. Without this, MSYS2 starts with a minimal PATH and
+          # `cargo: command not found`.
+          path-type: inherit
           install: >-
             base-devel
             tar

@@ -17,13 +17,31 @@
 #[allow(dead_code)]
 mod links;
 
-// Pick the botan-src crate based on which Cargo feature is on.
+// Botan version abstraction: botan-src 0.30701 (Botan 3.7.1) and 0.31200
+// (Botan 3.12) have slightly different public APIs. We hide that behind
+// a local `botan` module so the rest of build.rs can call `botan::build()`
+// and `botan::VERSION` uniformly.
+//
 // PQC + crypto-refresh force the older (3.7.1) Botan because librnp 0.18.1
 // references EC_Group / EC_Point by value, which Botan 3.11+ made opaque.
 #[cfg(any(feature = "pqc", feature = "crypto-refresh"))]
-use botan_src_compat as botan_src;
+mod botan {
+    use std::path::PathBuf;
+    pub const VERSION: &str = "3.7.1";
+    pub fn build() -> (String, PathBuf) {
+        let (build_dir, include_dir) = botan_src_compat::build();
+        (build_dir, PathBuf::from(include_dir))
+    }
+}
+
 #[cfg(not(any(feature = "pqc", feature = "crypto-refresh")))]
-use botan_src;
+mod botan {
+    use std::path::PathBuf;
+    pub const VERSION: &str = botan_src::BOTAN_VERSION;
+    pub fn build() -> (String, PathBuf) {
+        botan_src::build()
+    }
+}
 
 use links::{CmakeDep, Deps, JSON_C, ZLIB};
 use std::env;
@@ -145,7 +163,7 @@ fn build_botan(prefix: &Path) -> PathBuf {
     fs::create_dir_all(botan_prefix.join("lib")).ok();
     fs::create_dir_all(botan_prefix.join("include")).ok();
 
-    let (botan_build_dir, _botan_include_dir) = botan_src::build();
+    let (botan_build_dir, _botan_include_dir) = botan::build();
 
     // Static library.
     let lib_src = PathBuf::from(&botan_build_dir).join("libbotan-3.a");
@@ -180,20 +198,20 @@ fn write_botan_cmake_config(botan_prefix: &Path) {
     let cmake_dir = botan_prefix
         .join("lib")
         .join("cmake")
-        .join(format!("Botan-{}", botan_src::BOTAN_VERSION));
+        .join(format!("Botan-{}", botan::VERSION));
     fs::create_dir_all(&cmake_dir).ok();
 
     let template = include_str!("botan/BotanConfig.cmake.in");
     let prefix_str = botan_prefix.display().to_string();
     let config = template
-        .replace("@BOTAN_VERSION@", botan_src::BOTAN_VERSION)
+        .replace("@BOTAN_VERSION@", botan::VERSION)
         .replace("@BOTAN_PREFIX@", &prefix_str);
 
     fs::write(cmake_dir.join("BotanConfig.cmake"), config)
         .expect("rnp-src: failed to write BotanConfig.cmake");
     fs::write(
         cmake_dir.join("BotanConfigVersion.cmake"),
-        format!("set(PACKAGE_VERSION \"{}\")\n", botan_src::BOTAN_VERSION),
+        format!("set(PACKAGE_VERSION \"{}\")\n", botan::VERSION),
     )
     .expect("rnp-src: failed to write BotanConfigVersion.cmake");
 }
