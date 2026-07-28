@@ -9,14 +9,18 @@ description = "Build scripts for compiling librnp from source"
 repository = "https://github.com/rnpgp/rnp-rs"
 homepage = "https://github.com/rnpgp/rnp-rs"
 links = "rnp"
-# release-plz skips this package — we publish it manually with --no-verify
-# because the build.rs compiles Botan (10+ min) which cargo's verification
-# step can't handle. See release.yml.
-publish = true
+
+[features]
+default = []
+# When enabled, build.rs compiles Botan + json-c + zlib + bzip2 + librnp
+# from source. Off by default so that `cargo publish --verify` (which
+# runs build.rs without consumer features) doesn't trigger the 10+ min
+# Botan compilation. rnp-rs enables this when its `vendored` feature is on.
+compile = ["dep:botan-src", "dep:cmake"]
 
 [dependencies]
-botan-src = "0.31200.0"
+botan-src = { version = "0.31200.0", optional = true }
 
 [build-dependencies]
-botan-src = "0.31200.0"
-cmake = "0.1"
+botan-src = { version = "0.31200.0", optional = true }
+cmake = { version = "0.1", optional = true }

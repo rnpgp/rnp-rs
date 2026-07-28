@@ -1,19 +1,35 @@
-// rnp-src build script: download + compile librnp and all deps from source.
+// rnp-src build script.
 //
-// Execution order (guaranteed by Cargo):
-//   1. botan-src is compiled (its build.rs builds Botan)
-//   2. THIS build.rs runs (compiles json-c, zlib, bzip2, librnp)
-//   3. rnp-rs's build.rs runs (calls rnp_src::lib_dir() for paths)
+// When the `compile` feature is on (set by rnp-rs's `vendored` feature),
+// this downloads and compiles librnp + Botan + json-c + zlib + bzip2
+// from source. When `compile` is off (e.g., during `cargo publish
+// --verify`), this is a no-op — dummy paths are emitted so the lib.rs
+// compiles but the paths won't be used (rnp-src without `compile` is
+// only useful as a metadata package).
 
 use std::env;
 use std::path::PathBuf;
 use std::process::Command;
 
+#[cfg(feature = "compile")]
 const RNP_VERSION: &str = "0.18.1";
+#[cfg(feature = "compile")]
 const JSON_C_VERSION: &str = "0.17";
+#[cfg(feature = "compile")]
 const ZLIB_VERSION: &str = "1.3.1";
+#[cfg(feature = "compile")]
 const BZIP2_VERSION: &str = "1.0.8";
 
+#[cfg(not(feature = "compile"))]
+fn main() {
+    // No-op during cargo publish --verify.
+    // rnp-src without `compile` is a metadata-only package.
+    println!("cargo:rustc-env=RNP_SRC_LIB_DIR=");
+    println!("cargo:rustc-env=RNP_SRC_INCLUDE_DIR=");
+    println!("cargo:rustc-env=RNP_SRC_BOTAN_LIB_DIR=");
+}
+
+#[cfg(feature = "compile")]
 fn main() {
     let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"));
     let src_dir = out_dir.join("src");
@@ -97,12 +113,14 @@ fn main() {
         );
     }
 
-    // Expose paths to rnp-src's lib.rs via env!()
+    // Expose paths to rnp-rs's build.rs via Cargo's links mechanism.
+    // rnp-src declares `links = "rnp"` in Cargo.toml, so these become
+    // DEP_RNP_LIB_DIR, DEP_RNP_INCLUDE_DIR, etc. in downstream build.rs.
     let rnp_lib = rnp_prefix.join("lib");
     let rnp_inc = rnp_prefix.join("include");
-    println!("cargo:rustc-env=RNP_SRC_LIB_DIR={}", rnp_lib.display());
-    println!("cargo:rustc-env=RNP_SRC_INCLUDE_DIR={}", rnp_inc.display());
-    println!("cargo:rustc-env=RNP_SRC_BOTAN_LIB_DIR={}", botan_lib_dir.display());
+    println!("cargo:lib_dir={}", rnp_lib.display());
+    println!("cargo:include_dir={}", rnp_inc.display());
+    println!("cargo:botan_lib_dir={}", botan_lib_dir.display());
 }
 
 // --- Utility functions ---

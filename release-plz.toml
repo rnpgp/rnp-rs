@@ -7,16 +7,8 @@
 # See: https://release-plz.dev/docs/config
 
 [workspace]
-# Detect all workspace members automatically.
 git_release_enable = false
 dependencies_update = true
-
-# rnp-src is published manually in release.yml with --no-verify because
-# its build.rs compiles Botan (10+ min) which cargo's verification step
-# can't handle. release-plz only manages rnp-rs.
-[[package]]
-name = "rnp-src"
-publish = false
 
 # Changelog configuration.
 [changelog]
@@ -30,9 +22,3 @@ body = """
 {% endfor %}
 {% endfor %}
 """
-
-# Commit-message conventions:
-# - feat: minor version bump
-# - fix: patch version bump
-# - feat! or fix!: major version bump (breaking change)
-# - docs, chore, refactor, test: no version bump (changelog entry only)
