@@ -73,7 +73,7 @@
 //!
 //! | Feature | Description |
 //! |---------|-------------|
-//! | `vendored` | Build librnp from `vendor/rnp/` via CMake and statically link the result. |
+//! | `vendored` | Compile librnp + Botan + json-c + zlib + bzip2 from source via the `rnp-src` crate and statically link the result. |
 //! | `pqc` | Expose PQC algorithm constants and `Encryptor::prefer_pqc_enc_subkey`. Requires librnp built with `ENABLE_PQC=ON`. |
 //! | `crypto-refresh` | Expose v6 keys, crypto-refresh algorithms, and v6 PKESK/SKESK. Requires librnp built with `ENABLE_CRYPTO_REFRESH=ON`. |
 //! | `logging` | Gate `Context::set_log_fd` / `set_log_file`. |
