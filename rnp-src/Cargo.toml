@@ -1,0 +1,18 @@
+[package]
+name = "rnp-src"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+authors = ["Ribose Inc. <open.source@ribose.com>"]
+license = "BSD-2-Clause"
+description = "Build scripts for compiling librnp from source"
+repository = "https://github.com/rnpgp/rnp-rs"
+homepage = "https://github.com/rnpgp/rnp-rs"
+links = "rnp"
+
+[dependencies]
+botan-src = "0.31200.0"
+
+[build-dependencies]
+botan-src = "0.31200.0"
+cmake = "0.1"
