@@ -105,13 +105,18 @@ enum LinkMode {
 }
 
 fn locate_librnp() -> (PathBuf, Option<PathBuf>, LinkMode) {
-    // Vendored: delegate to rnp-src crate.
+    // Vendored: read paths from rnp-src via Cargo's links mechanism.
+    // rnp-src has `links = "rnp"` and its build.rs emits cargo:lib_dir=,
+    // cargo:include_dir=, etc. Cargo makes these available as
+    // DEP_RNP_LIB_DIR, DEP_RNP_INCLUDE_DIR in downstream build scripts.
     #[cfg(feature = "vendored")]
     {
-        // rnp-src has already compiled everything in its build.rs.
-        // Its lib.rs exposes the paths via env!() macros.
-        let lib_dir = rnp_src::lib_dir();
-        let include_dir = rnp_src::include_dir();
+        let lib_dir = PathBuf::from(env::var("DEP_RNP_LIB_DIR").expect(
+            "DEP_RNP_LIB_DIR not set — rnp-src's build.rs didn't run with compile feature"
+        ));
+        let include_dir = PathBuf::from(env::var("DEP_RNP_INCLUDE_DIR").expect(
+            "DEP_RNP_INCLUDE_DIR not set"
+        ));
         return (include_dir, Some(lib_dir), LinkMode::Vendored);
     }
 
