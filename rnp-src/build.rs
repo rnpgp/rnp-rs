@@ -36,18 +36,27 @@ fn main() {
     let botan_prefix = prefix.join("botan");
 
     // botan_src extracts source to {OUT_DIR}/botan-src/Botan-{VERSION}/
-    let botan_source_dir = src_dir
+    // (NOT src_dir/botan-src — src_dir is our own download dir).
+    let botan_source_dir = out_dir
         .join("botan-src")
         .join(format!("Botan-{}", botan_src::BOTAN_VERSION));
     if botan_source_dir.exists() {
+        // Use `prefix=` (not DESTDIR) so files install directly into
+        // {botan_prefix}/lib/ and {botan_prefix}/include/ — what cmake
+        // expects in CMAKE_PREFIX_PATH.
         run(
             Command::new("make")
                 .arg("-f")
                 .arg(format!("{botan_build_dir}/Makefile"))
-                .arg(format!("DESTDIR={}", botan_prefix.display()))
+                .arg(format!("prefix={}", botan_prefix.display()))
                 .arg("install")
                 .current_dir(&botan_source_dir),
             "botan make install",
+        );
+    } else {
+        panic!(
+            "rnp-src: botan source not found at {} — botan_src::build() may have changed its extraction path",
+            botan_source_dir.display()
         );
     }
     let botan_lib_dir = botan_prefix.join("lib");
