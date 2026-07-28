@@ -1,6 +1,6 @@
 [package]
 name = "rnp-rs"
-version = "0.1.9"
+version = "0.1.10"
 edition = "2024"
 rust-version = "1.88"
 authors = ["Ribose Inc. <open.source@ribose.com>"]
@@ -22,6 +22,10 @@ include = [
     "LICENSE.md",
 ]
 
+[workspace]
+members = [".", "rnp-src"]
+resolver = "2"
+
 [package.metadata.docs.rs]
 # Build with all features so the PQC + crypto-refresh API surface appears
 # in the rendered docs. docs.rs ignores features whose build deps aren't
@@ -31,10 +35,10 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 snafu = "0.8"
+rnp-src = { version = "0.1", path = "rnp-src", optional = true }
 
 [build-dependencies]
 bindgen = "0.72"
-cmake = "0.1"
 
 [dev-dependencies]
 proptest = "1"
@@ -56,22 +60,17 @@ harness = false
 
 [features]
 default = []
-# Download + compile librnp and all dependencies (Botan, json-c, zlib,
-# bzip2) from source at build time. Fully self-contained — no system
-# librnp/Botan needed. First build takes ~10 min; cached in OUT_DIR
-# after that. Requires: C/C++ compiler, cmake, python3, curl, tar.
-vendored = []
-# Implies `vendored`. Builds Botan with a reduced module set (drops
-# PQC, SM2/3/4, legacy ciphers, TLS). Faster compile, smaller binary.
-# Incompatible with `pqc`.
+# Compile librnp and all dependencies (Botan, json-c, zlib, bzip2) from
+# source at build time via the rnp-src crate. Fully self-contained — no
+# system librnp/Botan needed. First build takes ~10 min; cached in
+# OUT_DIR after that. Requires: C/C++ compiler, cmake, python3, curl, tar.
+vendored = ["dep:rnp-src"]
+# Implies `vendored`. (Future: pass module filtering to rnp-src.)
 vendored-minimal = ["vendored"]
-# Pass -DRNP_EXPERIMENTAL_PQC to bindgen so PQC algorithm constants
-# are exposed. When combined with `vendored`, also builds librnp with
-# ENABLE_PQC=ON.
+# Expose PQC algorithm constants in bindgen. When combined with
+# `vendored`, also builds librnp with ENABLE_PQC=ON.
 pqc = []
-# Pass -DRNP_EXPERIMENTAL_CRYPTO_REFRESH to bindgen so v6 keys and
-# crypto-refresh features are exposed. When combined with `vendored`,
-# also builds librnp with ENABLE_CRYPTO_REFRESH=ON.
+# Expose v6 key / crypto-refresh features in bindgen.
 crypto-refresh = []
 # Enable `Context::set_log_fd` / `set_log_file`.
 logging = []
