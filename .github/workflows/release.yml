@@ -87,6 +87,10 @@ jobs:
       - name: Smoke-build the crate against the new librnp
         run: cargo build --all-targets
 
+      - name: Publish rnp-src (no-verify, skip Botan compile)
+        run: cargo publish --no-verify -p rnp-src --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        continue-on-error: true
+
       - uses: MarcoIeni/release-plz-action@v0.5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
