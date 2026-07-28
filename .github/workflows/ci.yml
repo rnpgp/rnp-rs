@@ -334,18 +334,12 @@ jobs:
     runs-on: ubuntu-22.04
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v7
-
-      - uses: dtolnay/rust-toolchain@beta
-
-      - name: Install librnp
-        uses: ./.github/actions/install-librnp
-
-      - name: cargo build (beta)
-        run: cargo build --all-targets
-
-      - name: cargo test (beta)
-        run: cargo test --no-fail-fast
+      - uses: ./.github/actions/rust-test
+        with:
+          toolchain: beta
+          command: test
+          extra-args: --all-targets
+          allow-failure: "true"
 
   # ---------------------------------------------------------------------
   # Rust nightly — catches nightly breakage. allow-failure since nightly
@@ -357,15 +351,9 @@ jobs:
     runs-on: ubuntu-22.04
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v7
-
-      - uses: dtolnay/rust-toolchain@nightly
-
-      - name: Install librnp
-        uses: ./.github/actions/install-librnp
-
-      - name: cargo build (nightly)
-        run: cargo build --all-targets || true
-
-      - name: cargo test (nightly)
-        run: cargo test --no-fail-fast || true
+      - uses: ./.github/actions/rust-test
+        with:
+          toolchain: nightly
+          command: test
+          extra-args: --all-targets
+          allow-failure: "true"
