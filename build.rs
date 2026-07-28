@@ -251,7 +251,7 @@ fn locate_via_hardcoded_paths() -> LibrnpLocation {
     // `c++` provides ___gxx_personality_v0 (C++ exception personality
     // routine) that the static archive references but doesn't carry.
     let extra_link_libs: Vec<LinkLib> = if cfg!(target_os = "macos") {
-        ["z", "bz2", "json-c", "botan-3", "c++"]
+        ["z", "bz2", "json-c", "botan-3", "sexpp", "c++"]
             .iter()
             .map(|&name| LinkLib {
                 name: name.to_string(),
