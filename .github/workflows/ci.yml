@@ -160,67 +160,14 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      # rnp-src + botan-src-compat (3.7.1) build Botan + librnp from
+      # source when pqc + crypto-refresh are on. Older Botan is needed
+      # because librnp 0.18.1 references EC_Group / EC_Point by value,
+      # which Botan 3.11+ made opaque (PIMPL).
       - name: Install build deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y libjson-c-dev zlib1g-dev libbz2-dev cmake \
-            python3 python3-pip xz-utils
-
-      # librnp 0.18.1 (what rnp-src currently bundles) is incompatible
-      # with Botan 3.12 (what botan-src bundles): EC_Group/EC_Point APIs
-      # changed between 3.6 and 3.12. PQC testing therefore uses Botan 3.6
-      # + librnp HEAD (where the PQC + crypto-refresh features actually
-      # live). When rnp-src moves to librnp HEAD + botan-src 3.6, this
-      # job can collapse to `cargo test --features vendored,pqc,crypto-refresh`.
-      #
-      # BOTAN_PREFIX / RNP_PREFIX are set inside the run steps below
-      # (where $RUNNER_TEMP is shell-expanded) rather than at the YAML
-      # env: level — GitHub's static YAML check rejects `${{ runner.temp }}`
-      # in env: blocks.
-      - name: Build Botan 3.6 with PQC
-        run: |
-          set -euo pipefail
-          export BOTAN_PREFIX="$RUNNER_TEMP/rnp-deps/botan"
-          export RNP_PREFIX="$RUNNER_TEMP/rnp-deps/rnp"
-          mkdir -p "$RUNNER_TEMP/rnp-deps"
-          cd "$RUNNER_TEMP"
-          curl -sLO https://botan.randombit.net/releases/Botan-3.6.0.tar.xz
-          tar xf Botan-3.6.0.tar.xz
-          cd Botan-3.6.0
-          python3 configure.py \
-            --prefix="$BOTAN_PREFIX" \
-            --with-build-dir="$RUNNER_TEMP/botan-build" \
-            --link-method=copy \
-            --cc=gcc --cc-bin=g++ \
-            --enable-modules=ml_kem,ml_dsa,slh_dsa_sha2,slh_dsa_shake,ecdh,ecdsa,ed25519,ed448,x25519,x448,sm2,sm3,sm4,rsa,dsa,elgamal,argon2,sha1,sha2_32,sha2_64,sha3,keccak,aes,chacha20poly1305,gcm,ocb,xts,twofish,blowfish,cast128,camellia,idea,des,hmac,hmac_drbg,hkdf,pbkdf2,pgp_s2k,auto_rng,system_rng,chacha_rng,ffi
-          make -f "$RUNNER_TEMP/botan-build/Makefile" -j$(nproc)
-          make -f "$RUNNER_TEMP/botan-build/Makefile" install
-
-      - name: Checkout rnp HEAD
-        uses: actions/checkout@v7
-        with:
-          repository: rnpgp/rnp
-          ref: main
-          path: rnp-head
-          submodules: recursive
-
-      - name: Build rnp HEAD with ENABLE_PQC=ON
-        run: |
-          set -euo pipefail
-          export BOTAN_PREFIX="$RUNNER_TEMP/rnp-deps/botan"
-          export RNP_PREFIX="$RUNNER_TEMP/rnp-deps/rnp"
-          cmake -S rnp-head -B rnp-head/build \
-            -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ \
-            -DCRYPTO_BACKEND=botan3 \
-            -DENABLE_PQC=ON \
-            -DENABLE_CRYPTO_REFRESH=ON \
-            -DBUILD_SHARED_LIBS=ON \
-            -DBUILD_TESTING=OFF \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX="$RNP_PREFIX" \
-            -DCMAKE_PREFIX_PATH="$BOTAN_PREFIX"
-          cmake --build rnp-head/build --parallel $(nproc)
-          cmake --install rnp-head/build
+          sudo apt-get install -y cmake build-essential python3 curl
 
       - uses: actions/cache@v6
         with:
@@ -228,17 +175,10 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: pqc-${{ hashFiles('Cargo.lock') }}
+          key: pqc-vendored-${{ hashFiles('Cargo.lock', 'rnp-src/build.rs') }}
 
-      - name: cargo test --features pqc,crypto-refresh
-        run: |
-          set -euo pipefail
-          export BOTAN_PREFIX="$RUNNER_TEMP/rnp-deps/botan"
-          export RNP_PREFIX="$RUNNER_TEMP/rnp-deps/rnp"
-          export RNP_INCLUDE_DIR="$RNP_PREFIX/include"
-          export RNP_LIB_DIR="$RNP_PREFIX/lib"
-          export LD_LIBRARY_PATH="$RNP_PREFIX/lib:$BOTAN_PREFIX/lib"
-          cargo test --features pqc,crypto-refresh --no-fail-fast
+      - name: cargo test --features vendored,pqc,crypto-refresh
+        run: cargo test --features vendored,pqc,crypto-refresh --no-fail-fast
 
   # ---------------------------------------------------------------------
   # cargo-deny: license and security advisory checks.
@@ -277,57 +217,51 @@ jobs:
         run: cargo semver-checks check-release 2>&1 || true
 
   # ---------------------------------------------------------------------
-  # Windows build — install deps via vcpkg (botan, json-c, zlib, bzip2
-  # are all in the vcpkg registry), then build librnp 0.18.1 from
-  # source via cmake + the vcpkg toolchain file. rnp itself is NOT in
-  # vcpkg, hence the manual build.
-  #
-  # continue-on-error until we confirm vcpkg + cmake + MSVC reproducibly
-  # link the resulting librnp into the Rust binary.
+  # Windows build — uses MSYS2 UCRT64 toolchain (same approach as
+  # librnp's own CI). rnp-src builds librnp + Botan + json-c + zlib +
+  # bzip2 from source via gcc inside MSYS2; this avoids the missing
+  # `getopt.h` issue that breaks MSVC builds of librnp 0.18.1.
   # ---------------------------------------------------------------------
   windows:
-    name: windows
+    name: windows (MSYS2 UCRT64 + vendored)
     needs: typos
     runs-on: windows-2022
     continue-on-error: true
-    env:
-      VCPKG_DEFAULT_TRIPLET: x64-windows
     steps:
       - uses: actions/checkout@v7
 
+      - name: Set up MSYS2 UCRT64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            base-devel
+            tar
+            curl
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-make
+            mingw-w64-ucrt-x86_64-python
+
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
 
-      - name: Install deps via vcpkg
-        run: |
-          vcpkg install botan json-c zlib bzip2
-          echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> $GITHUB_ENV
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: vendored-windows-gnu-${{ hashFiles('Cargo.lock', 'rnp-src/build.rs') }}
 
-      - name: Download and build librnp 0.18.1
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $rnpPrefix = Join-Path $env:RUNNER_TEMP "rnp-install"
-          New-Item -ItemType Directory -Force -Path $rnpPrefix | Out-Null
-          Invoke-WebRequest -Uri "https://github.com/rnpgp/rnp/releases/download/v0.18.1/rnp-v0.18.1.tar.gz" -OutFile "rnp.tar.gz"
-          tar xzf rnp.tar.gz
-          cmake -S rnp-v0.18.1 -B rnp-v0.18.1/build `
-            -DCRYPTO_BACKEND=botan3 `
-            -DBUILD_SHARED_LIBS=ON `
-            -DBUILD_TESTING=OFF `
-            -DCMAKE_BUILD_TYPE=Release `
-            "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
-            "-DCMAKE_INSTALL_PREFIX=$rnpPrefix"
-          cmake --build rnp-v0.18.1/build --config Release --parallel ($env:NUMBER_OF_PROCESSORS)
-          cmake --install rnp-v0.18.1/build --config Release
-          # Surface paths to subsequent steps via GITHUB_ENV.
-          "RNP_INCLUDE_DIR=$rnpPrefix\include" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "RNP_LIB_DIR=$rnpPrefix\lib" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: cargo build (Windows)
-        run: cargo build --all-targets
-
-      - name: cargo test (Windows)
-        run: cargo test --no-fail-fast
+      # Run inside the MSYS2 shell so PATH, CC, CXX all resolve to the
+      # mingw gcc. rnp-src/build.rs's `gcc`/`g++`/`ar`/`make`/`nproc`
+      # calls find MSYS2 binaries on PATH.
+      - name: cargo test --features vendored (MSYS2 UCRT64)
+        shell: msys2 {0}
+        run: cargo test --features vendored --target x86_64-pc-windows-gnu --no-fail-fast
 
   # ---------------------------------------------------------------------
   # Miri — run the unsafe-code paths (ffi_safe, callbacks, Drop impls)
@@ -341,18 +275,15 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v7
-
-      - uses: dtolnay/rust-toolchain@nightly
+      - uses: ./.github/actions/rust-test
         with:
+          toolchain: nightly
           components: miri
-
-      - name: Install librnp
-        uses: ./.github/actions/install-librnp
-
-      - name: cargo miri (lib unit tests)
-        env:
-          MIRIFLAGS: "-Zmiri-permissive-provenance"
-        run: cargo +nightly miri test --lib || true
+          command: miri test
+          extra-args: --lib
+          env-vars: |
+            MIRIFLAGS=-Zmiri-permissive-provenance
+          allow-failure: "true"
 
   # ---------------------------------------------------------------------
   # Performance regression — compare benches/ against the committed
@@ -366,21 +297,14 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v7
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Install librnp
-        uses: ./.github/actions/install-librnp
-
-      - name: Install critcmp
-        run: cargo install critcmp --locked || true
-
-      - name: Run benchmarks
-        run: cargo bench --no-run
-
-      - name: Smoke-run one benchmark
-        run: cargo bench --bench sign_verify -- --quick
-        continue-on-error: true
+      - uses: ./.github/actions/rust-test
+        with:
+          toolchain: stable
+          pre-setup: cargo install critcmp --locked || true
+          command: bench
+          extra-args: --no-run
+          post-commands: cargo bench --bench sign_verify -- --quick || true
+          allow-failure: "true"
 
   # ---------------------------------------------------------------------
   # Rust beta — catches upcoming stable regressions early.

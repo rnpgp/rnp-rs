@@ -1,10 +1,13 @@
-# Reusable composite action: checkout → install toolchain → build librnp →
-# cargo build/test. Collapses the 4 near-identical jobs (bench, beta,
-# nightly, miri) into ~6 lines each.
+# Reusable composite action: install toolchain → build librnp →
+# cargo build/test. Used by bench, beta, nightly, miri.
+#
+# Caller MUST run `actions/checkout@v7` before this action — GitHub
+# needs to find .github/actions/install-librnp on disk before it can
+# resolve the local-action reference below.
 #
 # Why a composite action, not a reusable workflow:
-# composite actions can be called multiple times in the same job and
-# are easier to compose with per-job setup. Reusable workflows are
+# composite actions compose more naturally with per-job setup and can
+# be called multiple times in the same job. Reusable workflows are
 # heavier and require separate triggers.
 name: Run Rust build/test against a locally-built librnp
 
@@ -17,24 +20,39 @@ inputs:
     required: false
     default: ""
   command:
-    description: cargo subcommand to run (build, test, bench, clippy)
+    description: cargo subcommand to run (build, test, bench, clippy, miri test)
     required: false
     default: "test"
   extra-args:
-    description: Extra args appended after `cargo <command>` (e.g. --features ...)
+    description: Extra args appended after `cargo <command>` (e.g. --features ...).
+    required: false
+    default: ""
+  env-vars:
+    description: |
+      Multiline `KEY=value` pairs written to GITHUB_ENV before the cargo
+      command runs. Useful for things like MIRIFLAGS that the test
+      process must see.
+    required: false
+    default: ""
+  pre-setup:
+    description: Multiline shell script run after install-librnp, before cargo.
+    required: false
+    default: ""
+  post-commands:
+    description: |
+      Multiline shell script run after the main cargo command. Always
+      runs with continue-on-error so it can be a smoke-test / sanity
+      check that doesn't fail the job.
     required: false
     default: ""
   allow-failure:
-    description: If "true", treat non-zero exit as warning (continue-on-error).
+    description: If "true", treat non-zero exit on the main cargo command as warning.
     required: false
     default: "false"
 
 runs:
   using: composite
   steps:
-    # NOTE: callers MUST run actions/checkout@v7 before this action —
-    # GitHub needs to find .github/actions/install-librnp on disk before
-    # it can resolve this composite action's local-action reference.
     - uses: dtolnay/rust-toolchain@stable
       with:
         toolchain: ${{ inputs.toolchain }}
@@ -51,7 +69,27 @@ runs:
           target
         key: rust-test-${{ inputs.toolchain }}-${{ hashFiles('Cargo.lock') }}
 
+    - name: Pre-setup
+      if: inputs.pre-setup != ''
+      shell: bash
+      run: ${{ inputs.pre-setup }}
+
+    - name: Set env vars
+      if: inputs.env-vars != ''
+      shell: bash
+      run: |
+        while IFS= read -r line; do
+          [ -z "$line" ] && continue
+          echo "$line" >> "$GITHUB_ENV"
+        done <<< "${{ inputs.env-vars }}"
+
     - name: cargo ${{ inputs.command }}
       shell: bash
       continue-on-error: ${{ inputs.allow-failure == 'true' }}
       run: cargo ${{ inputs.command }} ${{ inputs.extra-args }} --no-fail-fast
+
+    - name: Post-commands
+      if: inputs.post-commands != '' && always()
+      shell: bash
+      continue-on-error: true
+      run: ${{ inputs.post-commands }}

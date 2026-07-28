@@ -17,6 +17,14 @@
 #[allow(dead_code)]
 mod links;
 
+// Pick the botan-src crate based on which Cargo feature is on.
+// PQC + crypto-refresh force the older (3.7.1) Botan because librnp 0.18.1
+// references EC_Group / EC_Point by value, which Botan 3.11+ made opaque.
+#[cfg(any(feature = "pqc", feature = "crypto-refresh"))]
+use botan_src_compat as botan_src;
+#[cfg(not(any(feature = "pqc", feature = "crypto-refresh")))]
+use botan_src;
+
 use links::{CmakeDep, Deps, JSON_C, ZLIB};
 use std::env;
 use std::fs;
