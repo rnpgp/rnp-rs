@@ -17,39 +17,26 @@
 #[allow(dead_code)]
 mod links;
 
-// Botan version abstraction: botan-src 0.30701 (Botan 3.7.1) and 0.31200
-// (Botan 3.12) have slightly different public APIs. We hide that behind
-// a local `botan` module so the rest of build.rs can call `botan::build()`
-// and `botan::VERSION` uniformly.
-//
-// PQC + crypto-refresh force the older (3.7.1) Botan because librnp 0.18.1
-// references EC_Group / EC_Point by value, which Botan 3.11+ made opaque.
-#[cfg(any(feature = "pqc", feature = "crypto-refresh"))]
-mod botan {
-    use std::path::PathBuf;
-    pub const VERSION: &str = "3.7.1";
-    pub fn build() -> (String, PathBuf) {
-        let (build_dir, include_dir) = botan_src_compat::build();
-        (build_dir, PathBuf::from(include_dir))
-    }
-}
-
-#[cfg(not(any(feature = "pqc", feature = "crypto-refresh")))]
-mod botan {
-    use std::path::PathBuf;
-    pub const VERSION: &str = botan_src::BOTAN_VERSION;
-    pub fn build() -> (String, PathBuf) {
-        botan_src::build()
-    }
-}
-
 use links::{CmakeDep, Deps, JSON_C, ZLIB};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// librnp version this crate compiles by default (release tarball).
 const RNP_VERSION: &str = "0.18.1";
+
+/// When `pqc` or `crypto-refresh` Cargo feature is on, rnp-src clones
+/// librnp HEAD instead of using the 0.18.1 release tarball. librnp 0.18.1
+/// has EC_Group/EC_Point code paths (gated behind ENABLE_PQC=ON /
+/// ENABLE_CRYPTO_REFRESH=ON) that are incompatible with Botan 3.12's
+/// opaque (PIMPL) types; HEAD has the fixes.
+///
+/// Pin to a specific commit for reproducibility. Bump when a new librnp
+/// release cuts.
+#[cfg(any(feature = "pqc", feature = "crypto-refresh"))]
+const RNP_HEAD_REF: &str = "main";
+
 const BZIP2_VERSION: &str = "1.0.8";
 
 /// During `cargo publish --verify`, cargo extracts the package to
@@ -163,7 +150,7 @@ fn build_botan(prefix: &Path) -> PathBuf {
     fs::create_dir_all(botan_prefix.join("lib")).ok();
     fs::create_dir_all(botan_prefix.join("include")).ok();
 
-    let (botan_build_dir, _botan_include_dir) = botan::build();
+    let (botan_build_dir, _botan_include_dir) = botan_src::build();
 
     // Static library.
     let lib_src = PathBuf::from(&botan_build_dir).join("libbotan-3.a");
@@ -198,20 +185,20 @@ fn write_botan_cmake_config(botan_prefix: &Path) {
     let cmake_dir = botan_prefix
         .join("lib")
         .join("cmake")
-        .join(format!("Botan-{}", botan::VERSION));
+        .join(format!("Botan-{}", botan_src::BOTAN_VERSION));
     fs::create_dir_all(&cmake_dir).ok();
 
     let template = include_str!("botan/BotanConfig.cmake.in");
     let prefix_str = botan_prefix.display().to_string();
     let config = template
-        .replace("@BOTAN_VERSION@", botan::VERSION)
+        .replace("@BOTAN_VERSION@", botan_src::BOTAN_VERSION)
         .replace("@BOTAN_PREFIX@", &prefix_str);
 
     fs::write(cmake_dir.join("BotanConfig.cmake"), config)
         .expect("rnp-src: failed to write BotanConfig.cmake");
     fs::write(
         cmake_dir.join("BotanConfigVersion.cmake"),
-        format!("set(PACKAGE_VERSION \"{}\")\n", botan::VERSION),
+        format!("set(PACKAGE_VERSION \"{}\")\n", botan_src::BOTAN_VERSION),
     )
     .expect("rnp-src: failed to write BotanConfigVersion.cmake");
 }
@@ -332,7 +319,9 @@ fn build_bzip2(src_dir: &Path, prefix: &Path) {
 // librnp — the final consumer of all deps above.
 // ---------------------------------------------------------------------
 
-fn build_librnp(src_dir: &Path, prefix: &Path, deps: &Deps) {
+/// Download + extract the librnp release tarball (default path).
+#[cfg(not(any(feature = "pqc", feature = "crypto-refresh")))]
+fn prepare_librnp_release(src_dir: &Path) -> PathBuf {
     let rnp_src = src_dir.join(format!("rnp-v{RNP_VERSION}"));
     if !rnp_src.exists() {
         let url = format!(
@@ -340,6 +329,49 @@ fn build_librnp(src_dir: &Path, prefix: &Path, deps: &Deps) {
         );
         download_and_extract(&url, src_dir);
     }
+    rnp_src
+}
+
+/// Clone librnp HEAD (or the pinned ref) for PQC/crypto-refresh builds.
+/// librnp 0.18.1's PQC + crypto-refresh code paths don't compile against
+/// Botan 3.12+; HEAD has the fix.
+#[cfg(any(feature = "pqc", feature = "crypto-refresh"))]
+fn prepare_librnp_head(src_dir: &Path) -> PathBuf {
+    let rnp_src = src_dir.join("rnp-head");
+    if !rnp_src.exists() {
+        eprintln!("rnp-src: cloning librnp HEAD ({RNP_HEAD_REF}) for PQC/crypto-refresh...");
+        run(
+            Command::new("git")
+                .args([
+                    "clone",
+                    "--depth",
+                    "1",
+                    "--branch",
+                    RNP_HEAD_REF,
+                    "--recurse-submodules",
+                    "https://github.com/rnpgp/rnp.git",
+                ])
+                .arg(&rnp_src),
+            "git clone rnp HEAD",
+        );
+    } else {
+        eprintln!(
+            "rnp-src: reusing existing librnp HEAD clone at {}",
+            rnp_src.display()
+        );
+    }
+    rnp_src
+}
+
+fn build_librnp(src_dir: &Path, prefix: &Path, deps: &Deps) {
+    // Pick the librnp source: 0.18.1 release tarball by default, or
+    // HEAD when pqc/crypto-refresh is on (librnp 0.18.1 has EC_Group /
+    // EC_Point code paths that don't compile against Botan 3.12's
+    // opaque types; HEAD has the fix).
+    #[cfg(not(any(feature = "pqc", feature = "crypto-refresh")))]
+    let rnp_src = prepare_librnp_release(src_dir);
+    #[cfg(any(feature = "pqc", feature = "crypto-refresh"))]
+    let rnp_src = prepare_librnp_head(src_dir);
 
     let (cc, cxx) = if cfg!(target_os = "macos") {
         ("/usr/bin/clang", "/usr/bin/clang++")

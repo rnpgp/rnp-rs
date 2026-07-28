@@ -11,23 +11,17 @@ homepage = "https://github.com/rnpgp/rnp-rs"
 links = "rnp"
 
 [features]
-default = ["botan-3-12"]
-# Default Botan: latest (3.12). Works for non-PQC builds against librnp 0.18.1.
-botan-3-12 = ["dep:botan-src"]
-# Compat Botan: 3.7.1 (pre-EC API drift). Required for PQC + crypto-refresh
-# because librnp 0.18.1's `src/lib/crypto/ec.cpp` references Botan::EC_Group
-# / EC_Point by value, which Botan 3.11+ made opaque (PIMPL).
-botan-3-7 = ["dep:botan-src-compat"]
+default = []
 # Build librnp with ENABLE_PQC=ON and Botan with PQC modules enabled.
-# Forces the compat (3.7.1) Botan for API compatibility with librnp 0.18.1.
-pqc = ["botan-3-7", "crypto-refresh"]
-# Build librnp with ENABLE_CRYPTO_REFRESH=ON. Also forces compat Botan
-# for the same reason as `pqc`.
-crypto-refresh = ["botan-3-7"]
+# PQC + crypto-refresh code paths in librnp 0.18.1 are incompatible with
+# Botan 3.12's opaque EC_Group/EC_Point API; when this feature is on,
+# rnp-src clones librnp HEAD (which has the fixes) instead of using the
+# 0.18.1 release tarball.
+pqc = ["crypto-refresh"]
+# Build librnp with ENABLE_CRYPTO_REFRESH=ON. Same HEAD-vs-0.18.1
+# reasoning as `pqc`.
+crypto-refresh = []
 
 [build-dependencies]
-# Default Botan (latest) — non-optional under default features.
-botan-src = { version = "0.31200", optional = true }
-# Compat Botan (older API) — pulled in only when pqc/crypto-refresh is on.
-botan-src-compat = { package = "botan-src", version = "0.30701", optional = true }
+botan-src = "0.31200"
 cmake = "0.1"
