@@ -20,8 +20,6 @@ include = [
     "Cargo.lock",
     "README.md",
     "LICENSE.md",
-    "prebuilt/**/*.a",
-    "prebuilt/**/*.h",
     "vendor/rnp/CMakeLists.txt",
     "vendor/rnp/src/lib/CMakeLists.txt",
     "vendor/README.md",
