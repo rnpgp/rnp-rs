@@ -1,6 +1,6 @@
 //! Mutation methods on [`Signature`]: export, remove from key.
 
-use crate::error::{check, Result};
+use crate::error::{Result, check};
 use crate::ffi;
 use crate::key::{ExportFlags, Key};
 use crate::ops::Output;

@@ -24,7 +24,7 @@
 //! (e.g. distinguishing `NOT_FOUND` from `NULL_POINTER`), spell it out
 //! inline. The helpers here encode one canonical mapping.
 
-use crate::error::{self, check, Result};
+use crate::error::{self, Result, check};
 use crate::ffi;
 use std::ffi::CStr;
 use std::os::raw::c_char;

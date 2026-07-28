@@ -10,10 +10,10 @@
 //! is the same pattern for every enum — could be macro-generated, but
 //! the manual form is clearer and lets each enum document its variants.
 
-use crate::error::{unknown_variant, Error};
+use crate::error::{Error, unknown_variant};
 use crate::{
-    encrypt::AeadType, Algorithm, ArmorType, Cipher, Compression, Curve, FeatureType, Hash,
-    KeyUsage,
+    Algorithm, ArmorType, Cipher, Compression, Curve, FeatureType, Hash, KeyUsage,
+    encrypt::AeadType,
 };
 use std::str::FromStr;
 

@@ -1,6 +1,6 @@
 //! [`RevocationSignatureBuilder`] — key-revocation signature.
 
-use crate::error::{self, check, Result};
+use crate::error::{self, Result, check};
 use crate::ffi;
 use crate::key::Key;
 use std::marker::PhantomData;

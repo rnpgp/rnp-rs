@@ -51,14 +51,12 @@ mod identifier;
 pub use identifier::KeyIdentifier;
 
 mod flags;
-pub use flags::{
-    ExportFlags, LoadSaveFlags, RemoveFlags, RemoveSignaturesFlags, UnloadFlags,
-};
+pub use flags::{ExportFlags, LoadSaveFlags, RemoveFlags, RemoveSignaturesFlags, UnloadFlags};
 
 mod inspection;
 
 mod mutation;
-pub use mutation::{AddUidOptions, ProtectOptions, RevocationCode, RevocationReason};
 pub(crate) use mutation::export_revocation_impl;
+pub use mutation::{AddUidOptions, ProtectOptions, RevocationCode, RevocationReason};
 
 mod lookup;

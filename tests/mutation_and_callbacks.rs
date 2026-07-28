@@ -4,15 +4,12 @@
 //! These complement `extended.rs` (which covers basic mutation like
 //! protect/unprotect and basic inspection).
 
-
-
 mod common;
 use common::signing_key;
 
 use rnp::{
-    Algorithm, Context, Hash, KeyBuilder, KeyIdentifier, KeyProvider,
-    KeyRequestOutcome, KeyUsage, RequestedKeyType, RevocationCode, RevocationReason,
-    SignatureType, SubpacketType,
+    Algorithm, Context, Hash, KeyBuilder, KeyIdentifier, KeyProvider, KeyRequestOutcome, KeyUsage,
+    RequestedKeyType, RevocationCode, RevocationReason, SignatureType, SubpacketType,
 };
 
 // --- Mutation: revoke ------------------------------------------------------
@@ -29,11 +26,16 @@ fn revoke_marks_key_revoked() {
     )
     .expect("revoke");
 
-    assert!(key.is_revoked().unwrap(), "key should be revoked after revoke()");
+    assert!(
+        key.is_revoked().unwrap(),
+        "key should be revoked after revoke()"
+    );
 
     let reason = key.revocation_reason().expect("reason getter");
     assert!(
-        reason.as_ref().is_some_and(|s| s.contains("test compromised")),
+        reason
+            .as_ref()
+            .is_some_and(|s| s.contains("test compromised")),
         "revocation reason text should be preserved: {reason:?}"
     );
 }

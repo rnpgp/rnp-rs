@@ -7,9 +7,9 @@ use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
 use std::os::raw::c_void;
 
+use super::Callbacks;
 use super::registry::{KeyProviderHolder, PasswordHolder};
 use super::types::{KeyRequestOutcome, RequestedKeyType};
-use super::Callbacks;
 
 // Bridges librnp's C callback to our `PasswordProvider` trait. We do not
 // currently surface the `key` argument as a fully fledged `Key` because doing

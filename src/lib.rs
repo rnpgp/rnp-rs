@@ -103,9 +103,9 @@ pub mod error;
 pub mod ffi;
 pub mod ffi_safe;
 pub mod key;
+pub mod key_signature_builder;
 pub mod keygen;
 pub mod keyring;
-pub mod key_signature_builder;
 pub mod ops;
 pub mod secret;
 pub mod security;
@@ -119,44 +119,43 @@ pub mod version;
 
 pub use algorithm::{Algorithm, Cipher, Compression, Curve, Hash, KeyUsage};
 #[cfg(feature = "pqc")]
-pub use algorithm::{librnp_supports_pqc, PqcAlgorithm};
-pub use armor::{armor_bytes, dearmor, dearmor_bytes, enarmor, guess_contents, ContentType};
+pub use algorithm::{PqcAlgorithm, librnp_supports_pqc};
+#[cfg(feature = "pqc")]
+pub use algorithm::{PqcAlgorithm, librnp_supports_pqc};
+pub use armor::{ContentType, armor_bytes, dearmor, dearmor_bytes, enarmor, guess_contents};
 pub use callbacks::{KeyProvider, KeyRequestOutcome, PasswordProvider, RequestedKeyType};
 pub use context::{Context, KeyringFormat};
 pub use dump::{
-    dump_packets_bytes_to_json, dump_packets_to_json, dump_packets_to_output, DumpFlags,
-    JsonDumpFlags, JsonFlags,
+    DumpFlags, JsonDumpFlags, JsonFlags, dump_packets_bytes_to_json, dump_packets_to_json,
+    dump_packets_to_output,
 };
 pub use encrypt::{
-    decrypt, decrypt_to, AddPasswordOptions, AeadType, DecryptResult, Decryptor, EncryptFlags,
-    Encryptor,
+    AddPasswordOptions, AeadType, DecryptResult, Decryptor, EncryptFlags, Encryptor, decrypt,
+    decrypt_to,
 };
-pub use error::{from_rnp_code, unknown_variant, Error, ErrorKind, Result};
-pub use key::{
-    ExportFlags, Key, KeyIdentifier, LoadSaveFlags, RemoveFlags, RemoveSignaturesFlags,
-    UnloadFlags,
-};
+pub use error::{Error, ErrorKind, Result, from_rnp_code, unknown_variant};
 pub use key::{AddUidOptions, ProtectOptions, RevocationCode, RevocationReason};
-pub use keygen::{generate_key_json, KeyBuilder, SubkeyBuilder};
-#[cfg(feature = "pqc")]
-pub use algorithm::{librnp_supports_pqc, PqcAlgorithm};
-pub use keyring::{IdentifierIterator, IdentifierKind};
+pub use key::{
+    ExportFlags, Key, KeyIdentifier, LoadSaveFlags, RemoveFlags, RemoveSignaturesFlags, UnloadFlags,
+};
 pub use key_signature_builder::{
     CertificationBuilder, ConfiguredBuilder, DirectSignatureBuilder, RevocationSignatureBuilder,
     SignatureSetterOps,
 };
+pub use keygen::{KeyBuilder, SubkeyBuilder, generate_key_json};
+pub use keyring::{IdentifierIterator, IdentifierKind};
 pub use ops::{
-    call_for_optional_string, call_for_string, cstr_to_optional_string, cstr_to_string,
-    ArmorType, Input, Output, OutputFileFlags,
+    ArmorType, Input, Output, OutputFileFlags, call_for_optional_string, call_for_string,
+    cstr_to_optional_string, cstr_to_string,
 };
-pub use secret::{zero_string_bytes, SecretString};
+pub use secret::{SecretString, zero_string_bytes};
 pub use security::{
-    calculate_iterations, request_password, supports_feature, supported_features, FeatureType,
-    SecurityFlags, SecurityLevel, SecurityRule,
+    FeatureType, SecurityFlags, SecurityLevel, SecurityRule, calculate_iterations,
+    request_password, supported_features, supports_feature,
 };
 pub use signature::{
-    generate_revocation_certificate, generate_revocation_certificate_with, sign, sign_cleartext,
-    sign_detached, verify, verify_detached, Mode, Signer,
+    Mode, Signer, generate_revocation_certificate, generate_revocation_certificate_with, sign,
+    sign_cleartext, sign_detached, verify, verify_detached,
 };
 pub use signature_handle::{Signature, SignatureType, Subpacket, SubpacketType};
 pub use subkey::Subkey;

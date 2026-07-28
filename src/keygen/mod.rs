@@ -19,7 +19,7 @@
 //! [`crate::algorithm`] and are re-exported here for backward compatibility.
 
 use crate::context::Context;
-use crate::error::{self, check, Result};
+use crate::error::{self, Result, check};
 use crate::ffi;
 use crate::key::Key;
 use std::ffi::CString;
@@ -27,7 +27,7 @@ use std::ffi::CString;
 // Backward compatibility: re-export the algorithm enums from this module.
 pub use crate::algorithm::{Algorithm, Cipher, Compression, Curve, Hash, KeyUsage};
 #[cfg(feature = "pqc")]
-pub use crate::algorithm::{librnp_supports_pqc, PqcAlgorithm};
+pub use crate::algorithm::{PqcAlgorithm, librnp_supports_pqc};
 
 pub(crate) mod primary;
 pub(crate) mod subkey;

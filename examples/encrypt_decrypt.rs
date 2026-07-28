@@ -2,9 +2,7 @@
 //!
 //! Run with: `cargo run --example encrypt_decrypt`
 
-use rnp::{
-    Algorithm, Cipher, Context, Encryptor, Hash, KeyBuilder, KeyUsage, Output,
-};
+use rnp::{Algorithm, Cipher, Context, Encryptor, Hash, KeyBuilder, KeyUsage, Output};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ctx = Context::new()?;
@@ -29,7 +27,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .armor(true)
         .build(&mut output)?;
     let ciphertext = output.into_bytes()?;
-    println!("ciphertext (armored):\n----\n{}----", String::from_utf8_lossy(&ciphertext));
+    println!(
+        "ciphertext (armored):\n----\n{}----",
+        String::from_utf8_lossy(&ciphertext)
+    );
 
     let recovered = rnp::decrypt(&ctx, &ciphertext)?;
     assert_eq!(recovered.as_slice(), plaintext);

@@ -1,6 +1,6 @@
 //! Benchmark: RSA-2048 keypair generation.
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use rnp::{Algorithm, Context, Hash, KeyBuilder, KeyUsage};
 
 fn bench_keygen(c: &mut Criterion) {

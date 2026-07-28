@@ -1,7 +1,7 @@
 //! Benchmark: sign + verify an inline-signed message.
 
-use criterion::{criterion_group, criterion_main, Criterion};
-use rnp::{sign, verify, Algorithm, Context, Hash, KeyBuilder, KeyUsage};
+use criterion::{Criterion, criterion_group, criterion_main};
+use rnp::{Algorithm, Context, Hash, KeyBuilder, KeyUsage, sign, verify};
 
 fn bench_sign_verify(c: &mut Criterion) {
     let ctx = Context::new().expect("ctx");

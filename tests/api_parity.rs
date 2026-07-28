@@ -3,9 +3,7 @@
 mod common;
 use common::signing_key;
 
-use rnp::{
-    Algorithm, Context, Hash, KeyBuilder, KeyUsage, Mode, Signer,
-};
+use rnp::{Algorithm, Context, Hash, KeyBuilder, KeyUsage, Mode, Signer};
 
 #[test]
 fn uid_remove_works() {

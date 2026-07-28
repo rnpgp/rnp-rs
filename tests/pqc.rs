@@ -9,8 +9,7 @@
 #![cfg(all(feature = "pqc", feature = "crypto-refresh"))]
 
 use rnp::{
-    librnp_supports_pqc, Context, Encryptor, Hash, KeyBuilder, KeyIdentifier, Output,
-    PqcAlgorithm,
+    Context, Encryptor, Hash, KeyBuilder, KeyIdentifier, Output, PqcAlgorithm, librnp_supports_pqc,
 };
 
 /// Skip the test unless the linked librnp actually supports PQC at runtime.
@@ -55,10 +54,7 @@ fn ml_dsa_sign_verify_roundtrip() {
         alg = alg_name
     );
     let result = rnp::generate_key_json(&ctx, &json).expect("generate pqc subkey");
-    assert!(
-        result.contains("grip"),
-        "expected grip in result: {result}"
-    );
+    assert!(result.contains("grip"), "expected grip in result: {result}");
 
     // Smoke: at least one key is present.
     assert!(ctx.public_key_count().unwrap() > 0);

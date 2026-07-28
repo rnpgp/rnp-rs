@@ -43,7 +43,9 @@ fn main() {
     // Set macOS deployment target for consistent ABI compatibility.
     // env::set_var is unsafe in Rust 2024 edition.
     if cfg!(target_os = "macos") {
-        unsafe { env::set_var("MACOSX_DEPLOYMENT_TARGET", "11.0"); }
+        unsafe {
+            env::set_var("MACOSX_DEPLOYMENT_TARGET", "11.0");
+        }
     }
 
     // --- 1. Botan (via botan-src crate) ---
@@ -153,7 +155,10 @@ fn download_and_extract(url: &str, dest: &PathBuf) {
         .arg(dest)
         .status()
         .unwrap_or_else(|e| panic!("rnp-src: failed to run tar: {e}"));
-    assert!(status.success(), "rnp-src: failed to extract tarball from {url}");
+    assert!(
+        status.success(),
+        "rnp-src: failed to extract tarball from {url}"
+    );
     let _ = std::fs::remove_file(&tarball);
 }
 
@@ -181,7 +186,12 @@ fn build_jsonc(src_dir: &PathBuf, prefix: &PathBuf) {
     let build_dir = src_dir.join("json-c-build");
     run(
         Command::new("cmake")
-            .args(["-S", jsonc_src.to_str().unwrap(), "-B", build_dir.to_str().unwrap()])
+            .args([
+                "-S",
+                jsonc_src.to_str().unwrap(),
+                "-B",
+                build_dir.to_str().unwrap(),
+            ])
             .args(["-DCMAKE_BUILD_TYPE=Release"])
             .args(["-DBUILD_SHARED_LIBS=OFF", "-DBUILD_TESTING=OFF"])
             .arg(format!("-DCMAKE_INSTALL_PREFIX={}", prefix.display()))
@@ -189,8 +199,12 @@ fn build_jsonc(src_dir: &PathBuf, prefix: &PathBuf) {
         "json-c cmake",
     );
     run(
-        Command::new("cmake")
-            .args(["--build", build_dir.to_str().unwrap(), "--parallel", &nproc()]),
+        Command::new("cmake").args([
+            "--build",
+            build_dir.to_str().unwrap(),
+            "--parallel",
+            &nproc(),
+        ]),
         "json-c build",
     );
     run(
@@ -211,14 +225,23 @@ fn build_zlib(src_dir: &PathBuf, prefix: &PathBuf) {
     let build_dir = src_dir.join("zlib-build");
     run(
         Command::new("cmake")
-            .args(["-S", zlib_src.to_str().unwrap(), "-B", build_dir.to_str().unwrap()])
+            .args([
+                "-S",
+                zlib_src.to_str().unwrap(),
+                "-B",
+                build_dir.to_str().unwrap(),
+            ])
             .args(["-DCMAKE_BUILD_TYPE=Release", "-DBUILD_SHARED_LIBS=OFF"])
             .arg(format!("-DCMAKE_INSTALL_PREFIX={}", prefix.display())),
         "zlib cmake",
     );
     run(
-        Command::new("cmake")
-            .args(["--build", build_dir.to_str().unwrap(), "--parallel", &nproc()]),
+        Command::new("cmake").args([
+            "--build",
+            build_dir.to_str().unwrap(),
+            "--parallel",
+            &nproc(),
+        ]),
         "zlib build",
     );
     run(
@@ -276,8 +299,16 @@ fn build_bzip2(src_dir: &PathBuf, prefix: &PathBuf) {
 
     std::fs::create_dir_all(prefix.join("lib")).ok();
     std::fs::create_dir_all(prefix.join("include")).ok();
-    std::fs::copy(bzip2_src.join("libbz2.a"), prefix.join("lib").join("libbz2.a")).unwrap();
-    std::fs::copy(bzip2_src.join("bzlib.h"), prefix.join("include").join("bzlib.h")).unwrap();
+    std::fs::copy(
+        bzip2_src.join("libbz2.a"),
+        prefix.join("lib").join("libbz2.a"),
+    )
+    .unwrap();
+    std::fs::copy(
+        bzip2_src.join("bzlib.h"),
+        prefix.join("include").join("bzlib.h"),
+    )
+    .unwrap();
 }
 
 fn build_librnp(
@@ -314,15 +345,27 @@ fn build_librnp(
 
     let build_dir = src_dir.join("rnp-build");
     let mut cmd = Command::new("cmake");
-    cmd.args(["-S", rnp_src.to_str().unwrap(), "-B", build_dir.to_str().unwrap()])
-        .args([format!("-DCMAKE_C_COMPILER={cc}"), format!("-DCMAKE_CXX_COMPILER={cxx}")])
-        .args(["-DCRYPTO_BACKEND=botan3"])
-        .args(["-DBUILD_SHARED_LIBS=OFF", "-DBUILD_TESTING=OFF", "-DENABLE_DOC=OFF"])
-        .args(["-DCMAKE_BUILD_TYPE=Release"])
-        .arg("-DCMAKE_CXX_FLAGS=-include cstring")
-        .arg(format!("-DCMAKE_PREFIX_PATH={prefix_path}"))
-        .arg(format!("-DCMAKE_INSTALL_PREFIX={}", prefix.display()))
-        .arg("-DCMAKE_POLICY_VERSION_MINIMUM=3.5");
+    cmd.args([
+        "-S",
+        rnp_src.to_str().unwrap(),
+        "-B",
+        build_dir.to_str().unwrap(),
+    ])
+    .args([
+        format!("-DCMAKE_C_COMPILER={cc}"),
+        format!("-DCMAKE_CXX_COMPILER={cxx}"),
+    ])
+    .args(["-DCRYPTO_BACKEND=botan3"])
+    .args([
+        "-DBUILD_SHARED_LIBS=OFF",
+        "-DBUILD_TESTING=OFF",
+        "-DENABLE_DOC=OFF",
+    ])
+    .args(["-DCMAKE_BUILD_TYPE=Release"])
+    .arg("-DCMAKE_CXX_FLAGS=-include cstring")
+    .arg(format!("-DCMAKE_PREFIX_PATH={prefix_path}"))
+    .arg(format!("-DCMAKE_INSTALL_PREFIX={}", prefix.display()))
+    .arg("-DCMAKE_POLICY_VERSION_MINIMUM=3.5");
 
     if cfg!(target_os = "macos") {
         cmd.arg("-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0");
@@ -330,8 +373,12 @@ fn build_librnp(
 
     run(&mut cmd, "librnp cmake");
     run(
-        Command::new("cmake")
-            .args(["--build", build_dir.to_str().unwrap(), "--parallel", &nproc()]),
+        Command::new("cmake").args([
+            "--build",
+            build_dir.to_str().unwrap(),
+            "--parallel",
+            &nproc(),
+        ]),
         "librnp build",
     );
     run(

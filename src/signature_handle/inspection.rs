@@ -1,6 +1,6 @@
 //! Read-only inspection methods on [`Signature`].
 
-use crate::error::{self, check, Result};
+use crate::error::{self, Result, check};
 use crate::ffi;
 use crate::ffi_safe::{
     call_for_bool, call_for_optional_string, call_for_string, call_for_u32, call_for_usize,

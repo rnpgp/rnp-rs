@@ -3,14 +3,10 @@
 //! Tests intentionally exercise the deprecated `generate_test_key` shim — it
 //! must keep working until removed.
 
-
-
 mod common;
 use common::signing_key;
 
-use rnp::{
-    sign, sign_detached, verify, verify_detached, Context, KeyIdentifier,
-};
+use rnp::{Context, KeyIdentifier, sign, sign_detached, verify, verify_detached};
 
 #[test]
 fn inline_sign_verify_roundtrip() {
@@ -22,7 +18,10 @@ fn inline_sign_verify_roundtrip() {
     assert!(!signed.is_empty());
 
     let result = verify(&ctx, &signed).expect("verify op ran");
-    assert!(result.any_valid().unwrap_or(false), "signature should verify");
+    assert!(
+        result.any_valid().unwrap_or(false),
+        "signature should verify"
+    );
 }
 
 #[test]
@@ -35,7 +34,10 @@ fn detached_sign_verify_roundtrip() {
     assert!(!sig.is_empty());
 
     let result = verify_detached(&ctx, message, &sig).expect("verify detached ran");
-    assert!(result.any_valid().unwrap_or(false), "detached signature should verify");
+    assert!(
+        result.any_valid().unwrap_or(false),
+        "detached signature should verify"
+    );
 }
 
 #[test]
@@ -50,7 +52,9 @@ fn verify_rejects_tampered_message() {
     let mut tampered = message.to_vec();
     tampered[0] ^= 0xff;
     let result = verify_detached(&ctx, &tampered, &sig);
-    let valid = result.map(|r| r.any_valid().unwrap_or(false)).unwrap_or(false);
+    let valid = result
+        .map(|r| r.any_valid().unwrap_or(false))
+        .unwrap_or(false);
     assert!(!valid, "tampered message must not verify");
 }
 

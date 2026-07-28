@@ -1,6 +1,6 @@
 //! User-ID handle. Borrows the parent [`Key`](crate::Key) for its lifetime.
 
-use crate::error::{self, check, Result};
+use crate::error::{self, Result, check};
 use crate::ffi;
 use crate::ffi_safe::{call_for_bool, call_for_u32, call_for_usize};
 use std::marker::PhantomData;
@@ -123,7 +123,10 @@ impl<'key> Uid<'key> {
     pub fn revocation_signature(&self) -> Result<Option<crate::Signature<'_>>> {
         let mut handle: ffi::rnp_signature_handle_t = ptr::null_mut();
         unsafe {
-            check(ffi::rnp_uid_get_revocation_signature(self.handle, &mut handle))?;
+            check(ffi::rnp_uid_get_revocation_signature(
+                self.handle,
+                &mut handle,
+            ))?;
         }
         if handle.is_null() {
             Ok(None)

@@ -5,8 +5,8 @@
 #![allow(deprecated)]
 
 use rnp::{
-    generate_revocation_certificate, Algorithm, Context, Hash, KeyBuilder, KeyIdentifier,
-    KeyUsage, SubkeyBuilder,
+    Algorithm, Context, Hash, KeyBuilder, KeyIdentifier, KeyUsage, SubkeyBuilder,
+    generate_revocation_certificate,
 };
 
 // --- Bug 54: revocation certificate ---------------------------------------
@@ -26,16 +26,14 @@ fn revocation_certificate_produces_standalone_bytes() {
     let cert = generate_revocation_certificate(
         &ctx,
         &key,
-        rnp::RevocationReason::new(rnp::RevocationCode::Compromised)
-            .with_reason("test revocation"),
+        rnp::RevocationReason::new(rnp::RevocationCode::Compromised).with_reason("test revocation"),
     )
     .expect("revocation cert");
 
     assert!(!cert.is_empty(), "revocation cert must be non-empty");
 
     // The cert should parse as a packet stream.
-    let json = rnp::dump_packets_bytes_to_json(&cert, rnp::JsonDumpFlags::default())
-        .expect("dump");
+    let json = rnp::dump_packets_bytes_to_json(&cert, rnp::JsonDumpFlags::default()).expect("dump");
     assert!(
         json.contains("Signature"),
         "revocation cert should contain a Signature packet: {json}"
@@ -69,7 +67,12 @@ fn keybuilder_add_subkey_creates_composite_keypair() {
         .unwrap()
         .expect("primary found");
     let subs = found.subkeys().expect("subkeys");
-    assert_eq!(subs.len(), 1, "expected 1 inline subkey, got {}", subs.len());
+    assert_eq!(
+        subs.len(),
+        1,
+        "expected 1 inline subkey, got {}",
+        subs.len()
+    );
     assert!(subs[0].is_sub().unwrap());
 }
 
@@ -102,11 +105,7 @@ fn keybuilder_multiple_inline_subkeys() {
         .find_key(KeyIdentifier::Fingerprint(&fp))
         .unwrap()
         .expect("found");
-    assert_eq!(
-        found.subkeys().unwrap().len(),
-        2,
-        "expected 2 subkeys"
-    );
+    assert_eq!(found.subkeys().unwrap().len(), 2, "expected 2 subkeys");
 }
 
 // --- Bug 56: previously defined a ThresholdSigner trait as a design

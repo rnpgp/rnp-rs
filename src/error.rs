@@ -337,7 +337,11 @@ impl Error {
 pub fn from_rnp_code(code: u32) -> Error {
     let kind = ErrorKind::from_code(code);
     let message = result_to_string(code);
-    Error::Rnp { code, kind, message }
+    Error::Rnp {
+        code,
+        kind,
+        message,
+    }
 }
 
 /// Construct an `Error::UnknownVariant`. Public so other modules (e.g.
@@ -395,7 +399,11 @@ pub(crate) fn check(code: u32) -> Result<()> {
     } else {
         let kind = ErrorKind::from_code(code);
         let message = result_to_string(code);
-        Err(Error::Rnp { code, kind, message })
+        Err(Error::Rnp {
+            code,
+            kind,
+            message,
+        })
     }
 }
 

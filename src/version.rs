@@ -87,11 +87,15 @@ pub fn backend_version() -> String {
 /// Enable librnp debug output. Wraps `rnp_enable_debug`.
 pub fn enable_debug(file: &str) {
     if let Ok(c) = std::ffi::CString::new(file) {
-    unsafe { let _ = ffi::rnp_enable_debug(c.as_ptr()); }
+        unsafe {
+            let _ = ffi::rnp_enable_debug(c.as_ptr());
+        }
     }
 }
 
 /// Disable librnp debug output. Wraps `rnp_disable_debug`.
 pub fn disable_debug() {
-    unsafe { let _ = ffi::rnp_disable_debug(); }
+    unsafe {
+        let _ = ffi::rnp_disable_debug();
+    }
 }

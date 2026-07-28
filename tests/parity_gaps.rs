@@ -2,15 +2,13 @@
 //! lifecycle, verify result, logging/key provider, buffer hygiene, misc
 //! getters.
 
-
-
 mod common;
 use common::signing_key;
 
 use rnp::{
-    request_password, Algorithm, Cipher, Context, Hash, KeyBuilder,
-    KeyIdentifier, KeyProvider, KeyRequestOutcome, KeyUsage, ProtectOptions,
-    RequestedKeyType, SecretString, SubkeyBuilder, SubpacketType,
+    Algorithm, Cipher, Context, Hash, KeyBuilder, KeyIdentifier, KeyProvider, KeyRequestOutcome,
+    KeyUsage, ProtectOptions, RequestedKeyType, SecretString, SubkeyBuilder, SubpacketType,
+    request_password,
 };
 
 // --- Phase 11: UID signatures ----------------------------------------------
@@ -28,7 +26,10 @@ fn uid_self_signature_has_key_flags() {
     // The first self-sig typically carries key flags.
     let self_sig = &sigs[0];
     let flags = self_sig.key_flags().unwrap_or(0);
-    assert!(flags != 0, "self-certification should have key flags, got 0");
+    assert!(
+        flags != 0,
+        "self-certification should have key flags, got 0"
+    );
 }
 
 #[test]
@@ -62,9 +63,15 @@ fn keygen_protection_at_generation_time() {
         .expect("protected key");
 
     assert!(key.is_protected().unwrap(), "should be protected");
-    assert!(key.is_locked().unwrap(), "should be locked after generation");
+    assert!(
+        key.is_locked().unwrap(),
+        "should be locked after generation"
+    );
     key.unlock(Some("hunter2")).expect("unlock");
-    assert!(!key.is_locked().unwrap(), "should be unlocked after password");
+    assert!(
+        !key.is_locked().unwrap(),
+        "should be unlocked after password"
+    );
 }
 
 // --- Phase 13: Signature lifecycle -----------------------------------------
@@ -80,8 +87,8 @@ fn signature_export_round_trips_via_dump() {
     assert!(!bytes.is_empty());
 
     // Re-parse the exported bytes as a packet stream.
-    let json = rnp::dump_packets_bytes_to_json(&bytes, rnp::JsonDumpFlags::default())
-        .expect("dump");
+    let json =
+        rnp::dump_packets_bytes_to_json(&bytes, rnp::JsonDumpFlags::default()).expect("dump");
     assert!(
         json.contains("Signature"),
         "exported bytes should contain a Signature packet: {json}"
@@ -104,10 +111,7 @@ fn signature_find_subpacket_keyflags() {
 #[test]
 fn subpacket_type_enum_round_trip() {
     // Known numeric tags map to typed variants and back.
-    assert_eq!(
-        SubpacketType::from_u8(27),
-        SubpacketType::KeyFlags
-    );
+    assert_eq!(SubpacketType::from_u8(27), SubpacketType::KeyFlags);
     assert_eq!(SubpacketType::KeyFlags.as_u8(), 27);
 
     // Unknown tag falls through to Other.
@@ -125,8 +129,8 @@ fn verify_signature_handle_exposes_signer() {
     let plaintext = b"some bytes";
     let signed = rnp::sign(&ctx, plaintext, &key).expect("sign");
 
-    let op = rnp::VerifyOp::inline(&ctx, &signed, rnp::Output::to_null().unwrap())
-        .expect("verify op");
+    let op =
+        rnp::VerifyOp::inline(&ctx, &signed, rnp::Output::to_null().unwrap()).expect("verify op");
     let result = op.execute().expect("execute");
     let sigs = result.signatures().expect("sigs");
     assert_eq!(sigs.len(), 1);
@@ -139,10 +143,7 @@ fn verify_signature_handle_exposes_signer() {
     // The key accessor returns the signing key.
     let signer_key = s.key().expect("key call");
     assert!(signer_key.is_some(), "signer should be in the keyring");
-    assert_eq!(
-        signer_key.unwrap().keyid().unwrap(),
-        key.keyid().unwrap()
-    );
+    assert_eq!(signer_key.unwrap().keyid().unwrap(), key.keyid().unwrap());
 }
 
 // --- Phase 15: Key provider -------------------------------------------------
@@ -164,7 +165,10 @@ fn key_provider_callback_invoked() {
     verify_ctx.set_key_provider(Box::new(provider));
 
     let result = rnp::verify_detached(&verify_ctx, plaintext, &sig).expect("verify");
-    assert!(result.any_valid().unwrap_or(false), "key provider should have satisfied the lookup");
+    assert!(
+        result.any_valid().unwrap_or(false),
+        "key provider should have satisfied the lookup"
+    );
 }
 
 struct StaticKeyProvider {
@@ -187,11 +191,7 @@ impl KeyProvider for StaticKeyProvider {
         _kind: RequestedKeyType,
     ) -> KeyRequestOutcome {
         let bytes = (*self.bytes).clone();
-        match ctx.load_keys(
-            rnp::KeyringFormat::Gpg,
-            &bytes,
-            rnp::LoadSaveFlags::PUBLIC,
-        ) {
+        match ctx.load_keys(rnp::KeyringFormat::Gpg, &bytes, rnp::LoadSaveFlags::PUBLIC) {
             Ok(()) => KeyRequestOutcome::Found,
             Err(_) => KeyRequestOutcome::NotFound,
         }
@@ -267,7 +267,10 @@ fn default_key_for_returns_subkey_for_encrypt_usage() {
         .expect("call");
     assert!(default_enc.is_some(), "should return an encryption subkey");
     let enc_key = default_enc.unwrap();
-    assert!(enc_key.is_sub().unwrap(), "default for encrypt should be a subkey");
+    assert!(
+        enc_key.is_sub().unwrap(),
+        "default for encrypt should be a subkey"
+    );
 }
 
 #[test]
@@ -279,8 +282,5 @@ fn signature_signer_key_returns_primary_for_self_cert() {
 
     let signer = sig.signer_key().expect("call");
     assert!(signer.is_some(), "self-cert signer should be in keyring");
-    assert_eq!(
-        signer.unwrap().keyid().unwrap(),
-        key.keyid().unwrap()
-    );
+    assert_eq!(signer.unwrap().keyid().unwrap(), key.keyid().unwrap());
 }

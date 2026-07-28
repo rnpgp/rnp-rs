@@ -1,6 +1,6 @@
 //! [`Output`] — RAII wrapper around `rnp_output_t`, plus [`OutputFileFlags`].
 
-use crate::error::{self, check, Result};
+use crate::error::{self, Result, check};
 use crate::ffi;
 use std::ffi::CString;
 use std::ptr;
@@ -90,7 +90,11 @@ impl Output {
         let c = CString::new(path).map_err(|_| error::Error::PathNul)?;
         let mut handle: ffi::rnp_output_t = ptr::null_mut();
         unsafe {
-            check(ffi::rnp_output_to_file(&mut handle, c.as_ptr(), flags.bits()))?;
+            check(ffi::rnp_output_to_file(
+                &mut handle,
+                c.as_ptr(),
+                flags.bits(),
+            ))?;
         }
         if handle.is_null() {
             return Err(error::Error::NullPointer);
@@ -117,7 +121,11 @@ impl Output {
         let mut handle: ffi::rnp_output_t = ptr::null_mut();
         let c = CString::new(ty.as_str()).unwrap();
         unsafe {
-            check(ffi::rnp_output_to_armor(base.handle, &mut handle, c.as_ptr()))?;
+            check(ffi::rnp_output_to_armor(
+                base.handle,
+                &mut handle,
+                c.as_ptr(),
+            ))?;
         }
         if handle.is_null() {
             return Err(error::Error::NullPointer);

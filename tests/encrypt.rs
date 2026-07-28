@@ -1,8 +1,6 @@
 //! Phase 6: encryption + decryption round-trips.
 
-use rnp::{
-    decrypt, Algorithm, Cipher, Context, Encryptor, Hash, KeyBuilder, KeyUsage, Output,
-};
+use rnp::{Algorithm, Cipher, Context, Encryptor, Hash, KeyBuilder, KeyUsage, Output, decrypt};
 use rnp::{Compression, ErrorKind};
 
 fn make_encryption_key<'a>(ctx: &'a Context, uid: &str) -> rnp::Key<'a> {

@@ -6,7 +6,7 @@
 //! `String`s rather than parsing into Rust structs to avoid coupling to a
 //! fixed shape.
 
-use crate::error::{check, Result};
+use crate::error::{Result, check};
 use crate::ffi;
 use crate::ffi_safe::call_for_string;
 use crate::ops::{Input, Output};
@@ -86,12 +86,14 @@ impl std::ops::BitOr for JsonFlags {
 }
 
 /// Dump packet information from `input` to `output` in human-readable form.
-pub fn dump_packets_to_output(
-    input: &Input,
-    output: &mut Output,
-    flags: DumpFlags,
-) -> Result<()> {
-    unsafe { check(ffi::rnp_dump_packets_to_output(input.as_ptr(), output.as_ptr(), flags.bits())) }
+pub fn dump_packets_to_output(input: &Input, output: &mut Output, flags: DumpFlags) -> Result<()> {
+    unsafe {
+        check(ffi::rnp_dump_packets_to_output(
+            input.as_ptr(),
+            output.as_ptr(),
+            flags.bits(),
+        ))
+    }
 }
 
 /// Dump packet information from `input` as a JSON string.

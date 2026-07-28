@@ -3,7 +3,7 @@
 mod common;
 use common::signing_key;
 
-use rnp::{sign_cleartext, verify, Context, SignatureType};
+use rnp::{Context, SignatureType, sign_cleartext, verify};
 
 #[test]
 fn cleartext_sign_verify_roundtrip() {
@@ -27,7 +27,10 @@ fn cleartext_sign_verify_roundtrip() {
     // And it must verify via the standard inline verify path (cleartext
     // is a special form of inline).
     let result = verify(&ctx, &clear).expect("verify");
-    assert!(result.any_valid().unwrap_or(false), "cleartext signature must verify");
+    assert!(
+        result.any_valid().unwrap_or(false),
+        "cleartext signature must verify"
+    );
 }
 
 #[test]
@@ -50,7 +53,9 @@ fn cleartext_tamper_breaks_verification() {
     clear[pos] ^= 0xff;
 
     let result = verify(&ctx, &clear);
-    let valid = result.map(|r| r.any_valid().unwrap_or(false)).unwrap_or(false);
+    let valid = result
+        .map(|r| r.any_valid().unwrap_or(false))
+        .unwrap_or(false);
     assert!(!valid, "tampered cleartext must not verify");
 }
 

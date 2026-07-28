@@ -46,9 +46,7 @@ fn iter_signatures_walks_a_multisig_message() {
     );
 
     // Also exercises early-exit: stop at first valid.
-    let first_valid = result
-        .iter_signatures()
-        .find(|s| s.status_is_valid());
+    let first_valid = result.iter_signatures().find(|s| s.status_is_valid());
     assert!(
         first_valid.is_some(),
         "iter_signatures should find at least one valid sig"

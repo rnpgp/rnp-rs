@@ -50,15 +50,12 @@ impl Callbacks {
         self.password = Some(unsafe { Box::from_raw(raw) });
     }
 
-    pub(crate) fn set_key_provider(
-        &mut self,
-        ffi: ffi::rnp_ffi_t,
-        provider: Box<dyn KeyProvider>,
-    ) {
+    pub(crate) fn set_key_provider(&mut self, ffi: ffi::rnp_ffi_t, provider: Box<dyn KeyProvider>) {
         let boxed = Box::new(KeyProviderHolder { inner: provider });
         let raw: *mut KeyProviderHolder = Box::into_raw(boxed);
         unsafe {
-            let _ = ffi::rnp_ffi_set_key_provider(ffi, Some(key_provider_thunk), raw as *mut c_void);
+            let _ =
+                ffi::rnp_ffi_set_key_provider(ffi, Some(key_provider_thunk), raw as *mut c_void);
         }
         self.key_provider = Some(unsafe { Box::from_raw(raw) });
     }

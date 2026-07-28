@@ -5,7 +5,7 @@
 //! ownership of the underlying key state — `Key` borrows the `Context` and
 //! mutation is performed in place through the FFI handle.
 
-use crate::error::{self, check, Result};
+use crate::error::{self, Result, check};
 use crate::ffi;
 use crate::keygen::{Cipher, Hash};
 use crate::ops::Output;
@@ -154,10 +154,7 @@ impl AddUidOptions {
 impl<'ctx> Key<'ctx> {
     /// Protect (encrypt) the secret material with `options.password`.
     pub fn protect(&self, options: &ProtectOptions) -> Result<()> {
-        let pw = options
-            .password
-            .as_ref()
-            .ok_or(error::Error::NullPointer)?;
+        let pw = options.password.as_ref().ok_or(error::Error::NullPointer)?;
         let pw_c = CString::new(pw.as_str()).map_err(|_| error::Error::NulByte)?;
         let cipher_c = options
             .cipher

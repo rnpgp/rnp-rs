@@ -1,6 +1,6 @@
 //! [`Subpacket`] handle and [`SubpacketType`] enum — RFC 4880 §5.2.3.1.
 
-use crate::error::{check, Result};
+use crate::error::{Result, check};
 use crate::ffi;
 use crate::ffi_safe::call_for_owned_bytes;
 use std::ptr;

@@ -31,7 +31,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let count = result.signature_count()?;
     println!("\nVerified. Signature count: {count}");
     for (i, sig) in result.iter_signatures().enumerate() {
-        let status = if sig.status_is_valid() { "valid" } else { "INVALID" };
+        let status = if sig.status_is_valid() {
+            "valid"
+        } else {
+            "INVALID"
+        };
         let keyid = sig.keyid().unwrap_or_else(|_| "<unknown>".into());
         println!("  sig[{i}]: keyid={keyid} status={status}");
     }

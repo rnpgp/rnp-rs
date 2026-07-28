@@ -53,8 +53,7 @@ impl Algorithm {
     pub fn is_signature(self) -> bool {
         matches!(
             self,
-            Algorithm::Rsa | Algorithm::Dsa | Algorithm::Ecdsa
-                | Algorithm::Eddsa | Algorithm::Sm2
+            Algorithm::Rsa | Algorithm::Dsa | Algorithm::Ecdsa | Algorithm::Eddsa | Algorithm::Sm2
         )
     }
 

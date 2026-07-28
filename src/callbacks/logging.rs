@@ -3,7 +3,7 @@
 #![cfg(feature = "logging")]
 
 use crate::context::Context;
-use crate::error::{self, check, Result};
+use crate::error::{self, Result, check};
 use crate::ffi;
 use std::ffi::CString;
 
@@ -22,8 +22,11 @@ impl Context {
         let path_c = CString::new(path).map_err(|_| error::Error::PathNul)?;
         let fd = unsafe {
             extern "C" {
-                fn open(path: *const std::os::raw::c_char, flags: std::os::raw::c_int, ...)
-                    -> std::os::raw::c_int;
+                fn open(
+                    path: *const std::os::raw::c_char,
+                    flags: std::os::raw::c_int,
+                    ...
+                ) -> std::os::raw::c_int;
             }
             let flags = if cfg!(target_os = "macos") {
                 0x1 | 0x40 | 0x200

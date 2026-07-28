@@ -2,8 +2,8 @@
 //! `SignatureSetterOps::sign`.
 
 use crate::error::Result;
-use crate::keygen::{Cipher, Compression, Hash};
 use crate::key::{Key, RevocationReason};
+use crate::keygen::{Cipher, Compression, Hash};
 use crate::signature_handle::Signature;
 use std::marker::PhantomData;
 

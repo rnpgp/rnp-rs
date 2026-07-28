@@ -133,10 +133,7 @@ fn signer_builder_per_signer_hash_overrides_default() {
     let result = rnp::verify_detached(&ctx, b"sha386", &signed).expect("verify");
     assert!(result.any_valid().expect("any_valid"));
 
-    let sig = result
-        .signature_at(0)
-        .expect("at 0")
-        .expect("present");
+    let sig = result.signature_at(0).expect("at 0").expect("present");
     let hash = sig.hash().expect("hash");
     assert_eq!(
         hash, "SHA384",

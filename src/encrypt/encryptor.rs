@@ -2,7 +2,7 @@
 
 use crate::algorithm::{Cipher, Compression, Hash};
 use crate::context::Context;
-use crate::error::{check, Result};
+use crate::error::{Result, check};
 use crate::ffi;
 use crate::key::Key;
 use crate::ops::{Input, Output};
@@ -228,7 +228,11 @@ pub(crate) unsafe fn apply_config(op: ffi::rnp_op_encrypt_t, e: &Encryptor<'_>) 
             check(ffi::rnp_op_encrypt_add_recipient(op, key.handle))?;
         }
         for key in &e.signatures {
-            check(ffi::rnp_op_encrypt_add_signature(op, key.handle, ptr::null_mut()))?;
+            check(ffi::rnp_op_encrypt_add_signature(
+                op,
+                key.handle,
+                ptr::null_mut(),
+            ))?;
         }
         for (pw, opts) in &e.passwords {
             let hash_str = opts
@@ -260,7 +264,11 @@ pub(crate) unsafe fn apply_config(op: ffi::rnp_op_encrypt_t, e: &Encryptor<'_>) 
         }
         if let Some((alg, level)) = e.compression {
             let cs = CString::new(alg.as_str()).unwrap();
-            check(ffi::rnp_op_encrypt_set_compression(op, cs.as_ptr(), level as i32))?;
+            check(ffi::rnp_op_encrypt_set_compression(
+                op,
+                cs.as_ptr(),
+                level as i32,
+            ))?;
         }
         if let Some(aead) = e.aead {
             let cs = CString::new(aead.as_str()).unwrap();

@@ -18,8 +18,8 @@
 //! | `inspection`  | Read-only getters on `Signature`              |
 //! | `mutation`    | Export + remove-from-key on `Signature`       |
 
-use crate::ffi_safe::{call_for_string, call_for_usize};
 use crate::ffi;
+use crate::ffi_safe::{call_for_string, call_for_usize};
 use std::marker::PhantomData;
 use std::ptr;
 
@@ -95,9 +95,9 @@ pub(crate) fn preferred_list(
     let mut out = Vec::with_capacity(count);
     for i in 0..count {
         let s = match kind {
-            PreferredKind::Cipher => call_for_string(|raw| unsafe {
-                ffi::rnp_signature_get_preferred_alg(sig, i, raw)
-            })?,
+            PreferredKind::Cipher => {
+                call_for_string(|raw| unsafe { ffi::rnp_signature_get_preferred_alg(sig, i, raw) })?
+            }
             PreferredKind::Hash => call_for_string(|raw| unsafe {
                 ffi::rnp_signature_get_preferred_hash(sig, i, raw)
             })?,

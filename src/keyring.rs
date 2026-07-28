@@ -2,7 +2,7 @@
 //! import, homedir discovery, and key counts.
 
 use crate::context::Context;
-use crate::error::{self, check, Result};
+use crate::error::{self, Result, check};
 use crate::ffi;
 use crate::ffi_safe::{call_for_string, call_for_usize};
 use crate::key::{KeyIdentifier, LoadSaveFlags, UnloadFlags};
@@ -22,7 +22,14 @@ impl Context {
         output: &mut crate::Output,
     ) -> Result<()> {
         let fmt_c = CString::new(format.as_str()).unwrap();
-        unsafe { check(ffi::rnp_save_keys(self.ffi, fmt_c.as_ptr(), output.as_ptr(), flags.bits())) }
+        unsafe {
+            check(ffi::rnp_save_keys(
+                self.ffi,
+                fmt_c.as_ptr(),
+                output.as_ptr(),
+                flags.bits(),
+            ))
+        }
     }
 
     /// Save the keyring to a memory buffer.
@@ -43,11 +50,7 @@ impl Context {
 
     /// Import keys from raw bytes (binary or armored). Returns the import
     /// status JSON (counts of new / updated / unchanged keys).
-    pub fn import_keys(
-        &self,
-        bytes: &[u8],
-        flags: crate::key::LoadSaveFlags,
-    ) -> Result<String> {
+    pub fn import_keys(&self, bytes: &[u8], flags: crate::key::LoadSaveFlags) -> Result<String> {
         let input = Input::from_memory(bytes)?;
         call_for_string(|raw| unsafe {
             ffi::rnp_import_keys(self.ffi, input.as_ptr(), flags.bits(), raw)

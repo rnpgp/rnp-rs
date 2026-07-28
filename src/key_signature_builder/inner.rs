@@ -1,6 +1,6 @@
 //! [`SignatureBuilderInner`] + [`SignatureSetterOps`] trait.
 
-use crate::error::{check, Result};
+use crate::error::{Result, check};
 use crate::ffi;
 use crate::key::{Key, RevocationReason};
 use crate::keygen::{Cipher, Compression, Hash};

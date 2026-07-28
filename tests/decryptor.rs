@@ -2,9 +2,7 @@
 
 #![allow(deprecated)]
 
-use rnp::{
-    Algorithm, Context, Decryptor, Encryptor, KeyBuilder, KeyUsage, Output,
-};
+use rnp::{Algorithm, Context, Decryptor, Encryptor, KeyBuilder, KeyUsage, Output};
 
 fn make_enc_key(ctx: &Context) -> rnp::Key<'_> {
     KeyBuilder::new(Algorithm::Rsa)

@@ -1,8 +1,8 @@
 //! Phase 4: KeyBuilder + SubkeyBuilder + algorithm enums.
 
 use rnp::{
-    generate_key_json, Algorithm, Cipher, Compression, Context, Hash, KeyBuilder,
-    KeyIdentifier, KeyUsage, SubkeyBuilder,
+    Algorithm, Cipher, Compression, Context, Hash, KeyBuilder, KeyIdentifier, KeyUsage,
+    SubkeyBuilder, generate_key_json,
 };
 
 #[test]
@@ -17,7 +17,10 @@ fn key_builder_rsa_basic() {
         .build(&ctx)
         .expect("build rsa key");
 
-    let uid = key.primary_uid().expect("primary uid").expect("uid present");
+    let uid = key
+        .primary_uid()
+        .expect("primary uid")
+        .expect("uid present");
     assert_eq!(uid, "builder <builder@example.com>");
 }
 

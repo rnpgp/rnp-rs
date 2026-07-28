@@ -1,13 +1,11 @@
 //! Phase 2 finishing + Phase 5 keyring + Phase 8 security/version.
 
-
-
 mod common;
 use common::signing_key;
 
 use rnp::{
-    supports_feature, Algorithm, Cipher, Context, FeatureType, Hash,
-    KeyBuilder, KeyIdentifier, KeyUsage, Output, ProtectOptions, RemoveFlags,
+    Algorithm, Cipher, Context, FeatureType, Hash, KeyBuilder, KeyIdentifier, KeyUsage, Output,
+    ProtectOptions, RemoveFlags, supports_feature,
 };
 
 // --- Phase 2 finishing: remaining key getters ------------------------------
@@ -56,7 +54,10 @@ fn signature_enumeration_and_subpackets() {
 
     let uid = &uids[0];
     let uid_sig_count = uid.signature_count().expect("uid sig count");
-    assert!(uid_sig_count > 0, "expected uid self-sig, got {uid_sig_count}");
+    assert!(
+        uid_sig_count > 0,
+        "expected uid self-sig, got {uid_sig_count}"
+    );
 }
 
 // --- Phase 3 mutation -------------------------------------------------------
@@ -108,7 +109,8 @@ fn remove_key_drops_count() {
     let grip = key.grip().unwrap();
     let before = ctx.public_key_count().unwrap();
 
-    key.remove(RemoveFlags::PUBLIC | RemoveFlags::SECRET).expect("remove");
+    key.remove(RemoveFlags::PUBLIC | RemoveFlags::SECRET)
+        .expect("remove");
 
     let after = ctx.public_key_count().unwrap();
     assert_eq!(after, before.saturating_sub(1));
@@ -158,7 +160,10 @@ fn identifier_iterator_yields_keys() {
     let ctx = Context::new().expect("ctx");
     let _ = signing_key(&ctx, "iter <iter@example.com>");
 
-    let count_fps: usize = ctx.identifiers(rnp::IdentifierKind::Fingerprint).unwrap().count();
+    let count_fps: usize = ctx
+        .identifiers(rnp::IdentifierKind::Fingerprint)
+        .unwrap()
+        .count();
     assert!(count_fps >= 1, "iterator should yield at least one fp");
 
     let count_grips: usize = ctx.identifiers(rnp::IdentifierKind::Grip).unwrap().count();

@@ -111,12 +111,12 @@ fn locate_librnp() -> (PathBuf, Option<PathBuf>, LinkMode) {
     // DEP_RNP_LIB_DIR, DEP_RNP_INCLUDE_DIR in downstream build scripts.
     #[cfg(feature = "vendored")]
     {
-        let lib_dir = PathBuf::from(env::var("DEP_RNP_LIB_DIR").expect(
-            "DEP_RNP_LIB_DIR not set — rnp-src's build.rs didn't emit lib_dir"
-        ));
-        let include_dir = PathBuf::from(env::var("DEP_RNP_INCLUDE_DIR").expect(
-            "DEP_RNP_INCLUDE_DIR not set"
-        ));
+        let lib_dir = PathBuf::from(
+            env::var("DEP_RNP_LIB_DIR")
+                .expect("DEP_RNP_LIB_DIR not set — rnp-src's build.rs didn't emit lib_dir"),
+        );
+        let include_dir =
+            PathBuf::from(env::var("DEP_RNP_INCLUDE_DIR").expect("DEP_RNP_INCLUDE_DIR not set"));
         return (include_dir, Some(lib_dir), LinkMode::Vendored);
     }
 

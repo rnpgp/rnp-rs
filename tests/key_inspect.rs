@@ -1,13 +1,9 @@
 //! Phase 2: read-only key inspection.
 
-
-
 mod common;
 use common::signing_key;
 
-use rnp::{
-    Algorithm, Context, KeyBuilder, KeyIdentifier, KeyUsage, UidType,
-};
+use rnp::{Algorithm, Context, KeyBuilder, KeyIdentifier, KeyUsage, UidType};
 
 #[test]
 fn key_scalar_getters() {
