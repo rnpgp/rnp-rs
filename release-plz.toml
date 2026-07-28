@@ -7,16 +7,19 @@
 # See: https://release-plz.dev/docs/config
 
 [workspace]
-# Detect all workspace members automatically (we have one crate).
-# Enable GitHub releases (set to true once CI is wired).
+# Detect all workspace members automatically.
 git_release_enable = false
-
-# Update dependencies with `cargo update` in the release PR.
 dependencies_update = true
+
+# rnp-src is published manually in release.yml with --no-verify because
+# its build.rs compiles Botan (10+ min) which cargo's verification step
+# can't handle. release-plz only manages rnp-rs.
+[[package]]
+name = "rnp-src"
+publish = false
 
 # Changelog configuration.
 [changelog]
-# Group commits by their conventional-commit type.
 body = """
 {% for group, commits in commits | group_by(attribute="group") %}
 ### {{ group | upper_first }}

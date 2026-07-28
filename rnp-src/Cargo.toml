@@ -9,6 +9,10 @@ description = "Build scripts for compiling librnp from source"
 repository = "https://github.com/rnpgp/rnp-rs"
 homepage = "https://github.com/rnpgp/rnp-rs"
 links = "rnp"
+# release-plz skips this package — we publish it manually with --no-verify
+# because the build.rs compiles Botan (10+ min) which cargo's verification
+# step can't handle. See release.yml.
+publish = true
 
 [dependencies]
 botan-src = "0.31200.0"
