@@ -12,6 +12,11 @@ tests/property.proptest-regressions
 /TODO.roadmap/
 /TODO*
 /BUGREPORT*
+
+# Local editor / agent state
+/.claude/
+/build-tools/
+
 *.tmp
 *.bak
 *.swp
