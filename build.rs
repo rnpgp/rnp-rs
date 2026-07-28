@@ -10,7 +10,7 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
-    let (include_dir, lib_dir, link_mode) = locate_librnp();
+    let (include_dir, lib_dir, link_mode, extra_lib_dirs) = locate_librnp();
 
     let rnp_header = include_dir.join("rnp").join("rnp.h");
     if !rnp_header.exists() {
@@ -22,6 +22,9 @@ fn main() {
     }
 
     if let Some(dir) = &lib_dir {
+        println!("cargo:rustc-link-search=native={}", dir.display());
+    }
+    for dir in &extra_lib_dirs {
         println!("cargo:rustc-link-search=native={}", dir.display());
     }
     println!("cargo:rerun-if-changed=wrapper.h");
@@ -104,7 +107,7 @@ enum LinkMode {
     Vendored,
 }
 
-fn locate_librnp() -> (PathBuf, Option<PathBuf>, LinkMode) {
+fn locate_librnp() -> (PathBuf, Option<PathBuf>, LinkMode, Vec<PathBuf>) {
     // Vendored: read paths from rnp-src via Cargo's links mechanism.
     // rnp-src has `links = "rnp"` and its build.rs emits cargo:lib_dir=,
     // cargo:include_dir=, etc. Cargo makes these available as
@@ -117,7 +120,21 @@ fn locate_librnp() -> (PathBuf, Option<PathBuf>, LinkMode) {
         );
         let include_dir =
             PathBuf::from(env::var("DEP_RNP_INCLUDE_DIR").expect("DEP_RNP_INCLUDE_DIR not set"));
-        return (include_dir, Some(lib_dir), LinkMode::Vendored);
+        // rnp-src emits additional cargo:foo_lib_dir=... entries so the
+        // linker can find Botan, json-c, zlib, and bzip2. Surface them
+        // here before main() emits cargo:rustc-link-search= directives.
+        let mut extra_lib_dirs: Vec<PathBuf> = Vec::new();
+        for var in [
+            "DEP_RNP_BOTAN_LIB_DIR",
+            "DEP_RNP_JSONC_LIB_DIR",
+            "DEP_RNP_ZLIB_LIB_DIR",
+            "DEP_RNP_BZIP2_LIB_DIR",
+        ] {
+            if let Ok(p) = env::var(var) {
+                extra_lib_dirs.push(PathBuf::from(p));
+            }
+        }
+        return (include_dir, Some(lib_dir), LinkMode::Vendored, extra_lib_dirs);
     }
 
     #[allow(unreachable_code)]
@@ -134,7 +151,7 @@ fn locate_librnp() -> (PathBuf, Option<PathBuf>, LinkMode) {
                     None
                 }
             });
-            return (include_dir, lib_dir, LinkMode::Explicit);
+            return (include_dir, lib_dir, LinkMode::Explicit, Vec::new());
         }
 
         let candidate_dirs: Vec<PathBuf> = if cfg!(target_os = "macos") {
@@ -166,6 +183,6 @@ fn locate_librnp() -> (PathBuf, Option<PathBuf>, LinkMode) {
             None
         };
 
-        (include_dir, lib_dir, LinkMode::System)
+        (include_dir, lib_dir, LinkMode::System, Vec::new())
     }
 }
