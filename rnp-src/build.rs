@@ -22,8 +22,9 @@ fn main() {
     std::fs::create_dir_all(&prefix).ok();
 
     // Set macOS deployment target for consistent ABI compatibility.
+    // env::set_var is unsafe in Rust 2024 edition.
     if cfg!(target_os = "macos") {
-        env::set_var("MACOSX_DEPLOYMENT_TARGET", "11.0");
+        unsafe { env::set_var("MACOSX_DEPLOYMENT_TARGET", "11.0"); }
     }
 
     // --- 1. Botan (via botan-src crate) ---
