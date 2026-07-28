@@ -247,8 +247,11 @@ fn locate_via_hardcoded_paths() -> LibrnpLocation {
     // fallback when pkg-config didn't surface them. Linux package
     // managers (.deb, .rpm) record transitive deps in the .so, so this
     // list is macOS-only.
+    //
+    // `c++` provides ___gxx_personality_v0 (C++ exception personality
+    // routine) that the static archive references but doesn't carry.
     let extra_link_libs: Vec<LinkLib> = if cfg!(target_os = "macos") {
-        ["z", "bz2", "json-c", "botan-3"]
+        ["z", "bz2", "json-c", "botan-3", "c++"]
             .iter()
             .map(|&name| LinkLib {
                 name: name.to_string(),
