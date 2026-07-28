@@ -367,17 +367,19 @@ fn prepare_librnp_head(src_dir: &Path) -> PathBuf {
         // Apply local compatibility patches. librnp HEAD's ec.cpp uses
         // Botan::EC_Group::from_name() but doesn't include <botan/ec_group.h>
         // — works with older Botan where ecdh.h transitively included it,
-        // fails against Botan 3.12. The patch adds the explicit include.
-        let patch = include_str!("patches/librnp-head-botan-3.12-ec-group-include.patch");
-        let patch_path = src_dir.join("librnp-head-botan-3.12.patch");
-        fs::write(&patch_path, patch).expect("write librnp patch");
-        run(
-            Command::new("git")
-                .args(["apply"])
-                .arg(&patch_path)
-                .current_dir(&rnp_src),
-            "apply librnp HEAD patch",
-        );
+        // fails against Botan 3.12. Inject the include directly via sed-style
+        // replacement (more robust than git apply, which depends on line
+        // numbers that drift in HEAD).
+        let ec_cpp = rnp_src.join("src/lib/crypto/ec.cpp");
+        let content = fs::read_to_string(&ec_cpp).expect("read librnp ec.cpp");
+        if !content.contains("botan/ec_group.h") {
+            let patched = content.replace(
+                "#include \"botan/ecdh.h\"\n",
+                "#include \"botan/ecdh.h\"\n#include \"botan/ec_group.h\"\n",
+            );
+            fs::write(&ec_cpp, patched).expect("write patched ec.cpp");
+            eprintln!("rnp-src: patched librnp HEAD ec.cpp with botan/ec_group.h include");
+        }
     } else {
         eprintln!(
             "rnp-src: reusing existing librnp HEAD clone at {}",
