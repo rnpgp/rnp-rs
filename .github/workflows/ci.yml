@@ -155,12 +155,6 @@ jobs:
     name: pqc + crypto-refresh
     needs: typos
     runs-on: ubuntu-22.04
-    env:
-      # Use the GitHub Actions context, not the shell variable form.
-      # `$RUNNER_TEMP` at YAML env: level is a literal; bash does not
-      # recursively expand it.
-      BOTAN_PREFIX: ${{ runner.temp }}/rnp-deps/botan
-      RNP_PREFIX: ${{ runner.temp }}/rnp-deps/rnp
     steps:
       - uses: actions/checkout@v7
 
@@ -178,8 +172,16 @@ jobs:
       # + librnp HEAD (where the PQC + crypto-refresh features actually
       # live). When rnp-src moves to librnp HEAD + botan-src 3.6, this
       # job can collapse to `cargo test --features vendored,pqc,crypto-refresh`.
+      #
+      # BOTAN_PREFIX / RNP_PREFIX are set inside the run steps below
+      # (where $RUNNER_TEMP is shell-expanded) rather than at the YAML
+      # env: level — GitHub's static YAML check rejects `${{ runner.temp }}`
+      # in env: blocks.
       - name: Build Botan 3.6 with PQC
         run: |
+          set -euo pipefail
+          export BOTAN_PREFIX="$RUNNER_TEMP/rnp-deps/botan"
+          export RNP_PREFIX="$RUNNER_TEMP/rnp-deps/rnp"
           mkdir -p "$RUNNER_TEMP/rnp-deps"
           cd "$RUNNER_TEMP"
           curl -sLO https://botan.randombit.net/releases/Botan-3.6.0.tar.xz
@@ -204,6 +206,9 @@ jobs:
 
       - name: Build rnp HEAD with ENABLE_PQC=ON
         run: |
+          set -euo pipefail
+          export BOTAN_PREFIX="$RUNNER_TEMP/rnp-deps/botan"
+          export RNP_PREFIX="$RUNNER_TEMP/rnp-deps/rnp"
           cmake -S rnp-head -B rnp-head/build \
             -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ \
             -DCRYPTO_BACKEND=botan3 \
@@ -227,6 +232,9 @@ jobs:
 
       - name: cargo test --features pqc,crypto-refresh
         run: |
+          set -euo pipefail
+          export BOTAN_PREFIX="$RUNNER_TEMP/rnp-deps/botan"
+          export RNP_PREFIX="$RUNNER_TEMP/rnp-deps/rnp"
           export RNP_INCLUDE_DIR="$RNP_PREFIX/include"
           export RNP_LIB_DIR="$RNP_PREFIX/lib"
           export LD_LIBRARY_PATH="$RNP_PREFIX/lib:$BOTAN_PREFIX/lib"
