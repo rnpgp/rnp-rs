@@ -27,9 +27,30 @@ fn main() {
     }
 
     // --- 1. Botan (via botan-src crate) ---
-    let botan_lib_dir = botan_src::lib_dir();
-    let botan_include_dir = botan_lib_dir.join("..").join("include");
-    eprintln!("rnp-src: botan lib_dir = {}", botan_lib_dir.display());
+    // botan_src::build() configures and compiles Botan, returning
+    // (build_dir, include_dir). We then run `make install` to create
+    // a proper prefix that cmake's find_package(Botan) can find.
+    eprintln!("rnp-src: building Botan via botan-src crate...");
+    let (botan_build_dir, _botan_include_dir) = botan_src::build();
+    let botan_prefix = prefix.join("botan");
+
+    // botan_src extracts source to {OUT_DIR}/botan-src/Botan-{VERSION}/
+    let botan_source_dir = src_dir
+        .join("botan-src")
+        .join(format!("Botan-{}", botan_src::BOTAN_VERSION));
+    if botan_source_dir.exists() {
+        run(
+            Command::new("make")
+                .arg("-f")
+                .arg(format!("{botan_build_dir}/Makefile"))
+                .arg(format!("DESTDIR={}", botan_prefix.display()))
+                .arg("install")
+                .current_dir(&botan_source_dir),
+            "botan make install",
+        );
+    }
+    let botan_lib_dir = botan_prefix.join("lib");
+    eprintln!("rnp-src: botan install prefix = {}", botan_prefix.display());
 
     // --- 2. json-c ---
     let jsonc_prefix = prefix.join("json-c");
@@ -59,7 +80,7 @@ fn main() {
         build_librnp(
             &src_dir,
             &rnp_prefix,
-            &botan_lib_dir,
+            &botan_prefix,
             &jsonc_prefix,
             &zlib_prefix,
             &bzip2_prefix,
@@ -254,10 +275,7 @@ fn build_librnp(
     // On Unix, paths are separated by ';'. CMake accepts both ':' and ';'.
     let prefix_path = format!(
         "{};{};{};{}",
-        botan_prefix
-            .parent()
-            .unwrap_or(botan_prefix)
-            .display(),
+        botan_prefix.display(),
         jsonc_prefix.display(),
         zlib_prefix.display(),
         bzip2_prefix.display(),
