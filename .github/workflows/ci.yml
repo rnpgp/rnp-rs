@@ -233,7 +233,6 @@ jobs:
     continue-on-error: true
     env:
       VCPKG_DEFAULT_TRIPLET: x64-windows
-      RNP_PREFIX: ${{ runner.temp }}\rnp-install
     steps:
       - uses: actions/checkout@v7
 
@@ -248,6 +247,8 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          $rnpPrefix = Join-Path $env:RUNNER_TEMP "rnp-install"
+          New-Item -ItemType Directory -Force -Path $rnpPrefix | Out-Null
           Invoke-WebRequest -Uri "https://github.com/rnpgp/rnp/releases/download/v0.18.1/rnp-v0.18.1.tar.gz" -OutFile "rnp.tar.gz"
           tar xzf rnp.tar.gz
           cmake -S rnp-v0.18.1 -B rnp-v0.18.1/build `
@@ -256,20 +257,17 @@ jobs:
             -DBUILD_TESTING=OFF `
             -DCMAKE_BUILD_TYPE=Release `
             "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
-            "-DCMAKE_INSTALL_PREFIX=$env:RNP_PREFIX"
+            "-DCMAKE_INSTALL_PREFIX=$rnpPrefix"
           cmake --build rnp-v0.18.1/build --config Release --parallel ($env:NUMBER_OF_PROCESSORS)
           cmake --install rnp-v0.18.1/build --config Release
+          # Surface paths to subsequent steps via GITHUB_ENV.
+          "RNP_INCLUDE_DIR=$rnpPrefix\include" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "RNP_LIB_DIR=$rnpPrefix\lib" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: cargo build (Windows)
-        env:
-          RNP_INCLUDE_DIR: ${{ runner.temp }}\rnp-install\include
-          RNP_LIB_DIR: ${{ runner.temp }}\rnp-install\lib
         run: cargo build --all-targets
 
       - name: cargo test (Windows)
-        env:
-          RNP_INCLUDE_DIR: ${{ runner.temp }}\rnp-install\include
-          RNP_LIB_DIR: ${{ runner.temp }}\rnp-install\lib
         run: cargo test --no-fail-fast
 
   # ---------------------------------------------------------------------
