@@ -457,7 +457,7 @@ variants are fully self-contained — no system crypto dependencies required.
   plugin signature check, closed system). Incompatible with the `pqc`
   feature — `cargo` will fail the build with a clear error if both are on.
 
-Pre-builts are produced by `.github/workflows/prebuild.yml` for
+Pre-built binaries are produced by `.github/workflows/prebuild.yml` for
 x86_64/aarch64 Linux and macOS (native runners), in both `full` and
 `minimal` variants.
 
