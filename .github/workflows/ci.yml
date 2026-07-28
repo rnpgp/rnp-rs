@@ -189,8 +189,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          arguments: check
 
   # ---------------------------------------------------------------------
   # cargo-semver-checks: catch breaking API changes against the

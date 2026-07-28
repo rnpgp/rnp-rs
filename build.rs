@@ -241,12 +241,29 @@ fn locate_via_hardcoded_paths() -> LibrnpLocation {
     } else {
         None
     };
+    // Homebrew's librnp.a (when brew ships the static archive) has
+    // unresolved symbols for its transitive deps — the .dylib records
+    // them via install_name but .a does not. Emit them explicitly as a
+    // fallback when pkg-config didn't surface them. Linux package
+    // managers (.deb, .rpm) record transitive deps in the .so, so this
+    // list is macOS-only.
+    let extra_link_libs: Vec<LinkLib> = if cfg!(target_os = "macos") {
+        ["z", "bz2", "json-c", "botan-3"]
+            .iter()
+            .map(|&name| LinkLib {
+                name: name.to_string(),
+                kind: LinkLibKind::Dylib,
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
     LibrnpLocation {
         include_dir,
         lib_dir,
         link_mode: LinkMode::System,
         extra_lib_dirs: Vec::new(),
-        extra_link_libs: Vec::new(),
+        extra_link_libs,
     }
 }
 
