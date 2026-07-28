@@ -76,12 +76,13 @@ jobs:
         if: matrix.os == 'windows'
         shell: pwsh
         run: |
-          # Visual Studio + CMake + Python + Git are pre-installed on
-          # windows-2022. We need: Perl (for OpenSSL Configure), NASM
-          # (for OpenSSL ASM), Ninja (faster builds).
-          choco install -y --no-progress perl nasm ninja
+          # Visual Studio + CMake + Python + Git + Ninja are pre-installed
+          # on windows-2022. We need: Perl (for OpenSSL Configure), NASM
+          # (for OpenSSL ASM).
+          # NOTE: choco "perl" package was removed; use strawberryperl.
+          choco install -y --no-progress strawberryperl nasm
           echo "C:\Program Files\NASM" >> $env:GITHUB_PATH
-          echo "C:\Program Files\Ninja" >> $env:GITHUB_PATH
+          echo "C:\Strawberry\perl\bin" >> $env:GITHUB_PATH
 
       # ---------------------------------------------------------------------
       # Backend: Botan (full or minimal module set)
@@ -212,7 +213,10 @@ jobs:
           tar xf json-c-0.17.tar.gz
 
           POLICY_FLAG=""
-          if [ "${{ matrix.libc }}" = "musl" ]; then
+          # CMake 4.x (shipped on Alpine and now macOS Homebrew) dropped
+          # support for cmake_minimum_required < 3.5. json-c 0.17 declares
+          # 3.0. Apply the policy flag on all non-Linux-glibc runners.
+          if [ "${{ matrix.libc }}" = "musl" ] || [ "${{ matrix.os }}" = "macos" ]; then
             POLICY_FLAG="-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
           fi
 
@@ -238,6 +242,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release ^
             -DBUILD_SHARED_LIBS=OFF ^
             -DBUILD_TESTING=OFF ^
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ^
             -DCMAKE_INSTALL_PREFIX="%RUNNER_TEMP%\json-c-install"
           cmake --build json-c-build --parallel %NUMBER_OF_PROCESSORS%
           cmake --install json-c-build
@@ -250,7 +255,7 @@ jobs:
           tar xf zlib-1.3.1.tar.gz
 
           POLICY_FLAG=""
-          if [ "${{ matrix.os }}" = "linux" ] && [ "${{ matrix.libc }}" = "musl" ]; then
+          if [ "${{ matrix.libc }}" = "musl" ] || [ "${{ matrix.os }}" = "macos" ]; then
             POLICY_FLAG="-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
           fi
 
@@ -274,6 +279,7 @@ jobs:
             -G "Ninja" ^
             -DCMAKE_BUILD_TYPE=Release ^
             -DBUILD_SHARED_LIBS=OFF ^
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ^
             -DCMAKE_INSTALL_PREFIX="%RUNNER_TEMP%\zlib-install"
           cmake --build zlib-build --parallel %NUMBER_OF_PROCESSORS%
           cmake --install zlib-build
@@ -372,7 +378,7 @@ jobs:
           PREFIX_PATH="$CRYPTO_PREFIX;$JSONC_PREFIX;$ZLIB_PREFIX;$BZIP2_PREFIX"
 
           POLICY_FLAG=""
-          if [ "${{ matrix.libc }}" = "musl" ]; then
+          if [ "${{ matrix.libc }}" = "musl" ] || [ "${{ matrix.os }}" = "macos" ]; then
             POLICY_FLAG="-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
           fi
 
@@ -438,6 +444,7 @@ jobs:
             -DBUILD_TESTING=OFF ^
             -DENABLE_DOC=OFF ^
             -DCMAKE_BUILD_TYPE=Release ^
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ^
             -DCMAKE_PREFIX_PATH="%PREFIX_PATH%" ^
             %EXTRA_RNP_FLAGS% ^
             -DCMAKE_INSTALL_PREFIX=%RUNNER_TEMP%\rnp-install
