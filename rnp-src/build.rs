@@ -364,22 +364,16 @@ fn prepare_librnp_head(src_dir: &Path) -> PathBuf {
                 .arg(&rnp_src),
             "git clone rnp HEAD",
         );
-        // Apply local compatibility patches. librnp HEAD's ec.cpp uses
-        // Botan::EC_Group::from_name() but doesn't include <botan/ec_group.h>
-        // — works with older Botan where ecdh.h transitively included it,
-        // fails against Botan 3.12. Inject the include directly via sed-style
-        // replacement (more robust than git apply, which depends on line
-        // numbers that drift in HEAD).
-        let ec_cpp = rnp_src.join("src/lib/crypto/ec.cpp");
-        let content = fs::read_to_string(&ec_cpp).expect("read librnp ec.cpp");
-        if !content.contains("botan/ec_group.h") {
-            let patched = content.replace(
-                "#include \"botan/ecdh.h\"\n",
-                "#include \"botan/ecdh.h\"\n#include \"botan/ec_group.h\"\n",
-            );
-            fs::write(&ec_cpp, patched).expect("write patched ec.cpp");
-            eprintln!("rnp-src: patched librnp HEAD ec.cpp with botan/ec_group.h include");
-        }
+        // Apply local compatibility patches. Botan 3.11+ made several
+        // types opaque (PIMPL): EC_Group, EC_Point, BigInt, EC_AffinePoint.
+        // Code that references these types by name needs to #include the
+        // corresponding header explicitly — but older Botan's headers
+        // transitively pulled them in via ecdh.h, so librnp HEAD's source
+        // doesn't always include them. Scan the crypto source tree and
+        // inject any missing includes.
+        patch_librnp_botan_includes(&rnp_src);
+
+        eprintln!("rnp-src: patched librnp HEAD for Botan 3.12+ include visibility");
     } else {
         eprintln!(
             "rnp-src: reusing existing librnp HEAD clone at {}",
@@ -387,6 +381,89 @@ fn prepare_librnp_head(src_dir: &Path) -> PathBuf {
         );
     }
     rnp_src
+}
+
+/// For each `.cpp`/`.hpp` under librnp's `src/lib/crypto/`, check whether
+/// it references one of the Botan types whose header became opaque in
+/// Botan 3.11+ (and thus needs an explicit `#include`). If the file uses
+/// the type but doesn't include the header, inject the include right
+/// after the first existing `#include "botan/...` line.
+///
+/// Idempotent: re-running on an already-patched tree is a no-op.
+#[cfg(any(feature = "pqc", feature = "crypto-refresh"))]
+fn patch_librnp_botan_includes(rnp_src: &Path) {
+    /// (Botan type prefix, header to include)
+    const TYPE_HEADER_PAIRS: &[(&str, &str)] = &[
+        ("Botan::EC_Group", "botan/ec_group.h"),
+        ("Botan::EC_Point", "botan/ec_point.h"),
+        ("Botan::EC_AffinePoint", "botan/ec_affinepoint.h"),
+        ("Botan::BigInt", "botan/bigint.h"),
+        ("Botan::ECDH_PrivateKey", "botan/ecdh.h"),
+        ("Botan::ECDSA_PrivateKey", "botan/ecdsa.h"),
+        ("Botan::Ed25519_PrivateKey", "botan/ed25519.h"),
+        ("Botan::Ed448_PrivateKey", "botan/ed448.h"),
+        ("Botan::X25519_PrivateKey", "botan/x25519.h"),
+        ("Botan::X448_PrivateKey", "botan/x448.h"),
+    ];
+
+    let crypto_dir = rnp_src.join("src/lib/crypto");
+    let mut files: Vec<PathBuf> = Vec::new();
+    collect_files(&crypto_dir, &["cpp", "hpp", "h"], &mut files);
+
+    for file in files {
+        let Ok(content) = fs::read_to_string(&file) else {
+            continue;
+        };
+        let mut patched = content.clone();
+        let mut changed = false;
+        for (type_prefix, header) in TYPE_HEADER_PAIRS {
+            let include_line = format!("#include <{header}>");
+            if patched.contains(include_line.as_str()) {
+                continue;
+            }
+            if !patched.contains(type_prefix) {
+                continue;
+            }
+            // Inject the include right after the first existing botan include,
+            // or after the file's first #include if no botan include exists yet.
+            let needle = "#include <botan/";
+            if let Some(idx) = patched.find(needle) {
+                let line_end = patched[idx..]
+                    .find('\n')
+                    .map(|n| idx + n + 1)
+                    .unwrap_or(patched.len());
+                patched.insert_str(line_end, &format!("{include_line}\n"));
+            } else if let Some(idx) = patched.find("#include") {
+                let line_end = patched[idx..]
+                    .find('\n')
+                    .map(|n| idx + n + 1)
+                    .unwrap_or(patched.len());
+                patched.insert_str(line_end, &format!("{include_line}\n"));
+            }
+            changed = true;
+        }
+        if changed {
+            fs::write(&file, patched)
+                .unwrap_or_else(|e| panic!("rnp-src: failed to patch {}: {e}", file.display()));
+        }
+    }
+}
+
+#[cfg(any(feature = "pqc", feature = "crypto-refresh"))]
+fn collect_files(dir: &Path, extensions: &[&str], out: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_files(&path, extensions, out);
+        } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            if extensions.contains(&ext) {
+                out.push(path);
+            }
+        }
+    }
 }
 
 fn build_librnp(src_dir: &Path, prefix: &Path, deps: &Deps) {
