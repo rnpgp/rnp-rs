@@ -33,10 +33,12 @@ runs:
       shell: bash
       run: |
         # rnp-src installs to OUT_DIR/install/{rnp,botan,json-c,zlib,bzip2}/
-        # OUT_DIR is target/<profile>/build/rnp-src-<hash>/out
-        OUT_DIR="$(find target/debug/build -maxdepth 1 -name 'rnp-src-*' -print -quit)/out"
+        # OUT_DIR is target/debug/build/rnp-src-<hash>/out
+        OUT_DIR=$(ls -d target/debug/build/rnp-src-*/out 2>/dev/null | head -1)
         if [ -z "$OUT_DIR" ] || [ ! -d "$OUT_DIR/install/rnp" ]; then
           echo "ERROR: rnp-src build output not found" >&2
+          echo "Searched: target/debug/build/rnp-src-*/out" >&2
+          ls -la target/debug/build/ | grep rnp-src >&2 || true
           exit 1
         fi
         echo "RNP_INCLUDE_DIR=$OUT_DIR/install/rnp/include" >> $GITHUB_ENV
