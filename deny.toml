@@ -29,6 +29,10 @@ allow = [
     "Unicode-DFS-2016",
     "Unicode-3.0",
     "CC0-1.0",
+    # CDLA-Permissive-2.0: Community Data License Agreement Permissive 2.0.
+    # Used by webpki-roots (pulled in transitively by ureq's TLS feature)
+    # for the Mozilla CA root bundle. Permissive — no copyleft requirements.
+    "CDLA-Permissive-2.0",
 ]
 
 # Confidence threshold for license detection
