@@ -29,4 +29,6 @@ cmake = "0.1"
 # having curl + tar in PATH (Windows runners don't always have curl).
 flate2 = "1"
 tar = "0.4"
-ureq = { version = "3", default-features = false }
+# Pin to ureq 2.x for the simpler, stable API (3.x changed the Response
+# surface significantly; 2.x is widely deployed and well-understood).
+ureq = "2"
