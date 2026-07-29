@@ -39,33 +39,7 @@ const RNP_HEAD_REF: &str = "main";
 
 const BZIP2_VERSION: &str = "1.0.8";
 
-/// During `cargo publish --verify`, cargo extracts the package to
-/// `target/package/rnp-src-<version>/` and builds it there. The build
-/// script's `OUT_DIR` then contains `target/package/` as a path component.
-///
-/// During a REAL build (as a dependency), `OUT_DIR` is the consumer's
-/// `target/debug/build/rnp-src-<hash>/out` — no `target/package/`.
-///
-/// NOTE: We used to check for `Cargo.toml.orig` (which cargo creates during
-/// packaging). But that file ALSO exists in the crates.io registry
-/// extraction when a consumer downloads the published crate — so every
-/// crates.io user hit the packaging fast-path and got empty lib paths.
-fn is_packaging() -> bool {
-    env::var("OUT_DIR")
-        .map(|d| d.contains("target/package/"))
-        .unwrap_or(false)
-}
-
 fn main() {
-    // Skip heavy compilation during cargo publish --verify.
-    // The CI smoke build already verifies correctness.
-    if is_packaging() {
-        println!("cargo:rustc-env=RNP_SRC_VERSION={RNP_VERSION}");
-        println!("cargo:lib_dir=");
-        println!("cargo:include_dir=");
-        return;
-    }
-
     let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"));
     let src_dir = out_dir.join("src");
     let prefix = out_dir.join("install");
