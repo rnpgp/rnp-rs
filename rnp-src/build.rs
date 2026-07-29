@@ -74,11 +74,15 @@ fn main() {
 
     // Windows + MSYS2 UCRT64: botan-src's configure.py auto-detects MSVC
     // by default and fails ("could not find 'cl'"). Force gcc (mingw)
-    // so it picks the MSYS2 toolchain.
+    // so it picks the MSYS2 toolchain. Also disable the Windows cert
+    // store module — it references crypt32.lib (CertFreeCertificateContext
+    // etc.) which our static link doesn't pull in, causing linker errors
+    // during the librnp build step.
     if cfg!(target_os = "windows") {
         unsafe {
             env::set_var("BOTAN_CONFIGURE_CC", "gcc");
             env::set_var("BOTAN_CONFIGURE_CC_BIN", "g++");
+            env::set_var("BOTAN_CONFIGURE_DISABLE_MODULES", "certstor_system_windows");
         }
     }
 
