@@ -162,16 +162,31 @@ fn build_botan(prefix: &Path) -> PathBuf {
 
     let (botan_build_dir, _botan_include_dir) = botan_src::build();
 
+    // Botan's static lib filename differs by platform: Unix uses the
+    // libfoo.a convention; Windows (even with mingw/MSYS2) produces
+    // botan-3.lib via `ar crs`. Pick the right name so we don't panic
+    // on Windows looking for a file that doesn't exist.
+    let lib_name = if cfg!(target_os = "windows") {
+        "botan-3.lib"
+    } else {
+        "libbotan-3.a"
+    };
+
     // Static library.
-    let lib_src = PathBuf::from(&botan_build_dir).join("libbotan-3.a");
+    let lib_src = PathBuf::from(&botan_build_dir).join(lib_name);
     if !lib_src.exists() {
         panic!(
             "rnp-src: expected Botan static library at {}, but it was not produced",
             lib_src.display()
         );
     }
+    // Always copy as libbotan-3.a — cargo's rustc-link-lib=static=botan-3
+    // searches for libbotan-3.a on Unix AND on Windows GNU target
+    // (x86_64-pc-windows-gnu). Botan's Windows build produces botan-3.lib;
+    // renaming to libbotan-3.a is safe because the archive format is the
+    // same (GNU ar).
     fs::copy(&lib_src, botan_prefix.join("lib").join("libbotan-3.a"))
-        .expect("rnp-src: failed to copy libbotan-3.a into prefix");
+        .expect("rnp-src: failed to copy Botan static library into prefix");
 
     // Public headers — botan-src places them at
     // {build_dir}/build/include/public/ (note the double `build/`).
