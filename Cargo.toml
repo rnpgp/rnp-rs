@@ -34,7 +34,7 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
-snafu = "0.8"
+snafu = "0.9"
 rnp-src = { version = "0.1", path = "rnp-src", optional = true }
 
 [build-dependencies]
@@ -48,7 +48,7 @@ rnp-src = { version = "0.1", path = "rnp-src", optional = true }
 
 [dev-dependencies]
 proptest = "1"
-criterion = "0.5"
+criterion = "0.8"
 sequoia-openpgp = { version = "2", default-features = false, features = ["crypto-rust", "compression-deflate", "allow-experimental-crypto", "allow-variable-time-crypto"] }
 rnp-sexp = "0.1"
 
