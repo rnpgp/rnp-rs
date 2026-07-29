@@ -239,6 +239,14 @@ jobs:
     needs: typos
     runs-on: windows-2022
     continue-on-error: true
+    timeout-minutes: 45
+    env:
+      # Override cargo's jobserver semaphore — MSYS2's make can't parse
+      # the `__rust_jobserver_semaphore_*` string cargo passes, so it
+      # falls back to -j1 and Botan takes 30+ min single-threaded.
+      # Setting CARGO_MAKEFLAGS to a plain -j4 means botan-src's make()
+      # passes MAKEFLAGS=-j4 which MSYS2's make understands.
+      CARGO_MAKEFLAGS: "-j4"
     steps:
       - uses: actions/checkout@v7
 
