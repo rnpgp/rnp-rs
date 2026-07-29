@@ -1,11 +1,10 @@
-name: Install librnp 0.18.1
-description: Build Botan 3.12 + librnp 0.18.1 from source and export paths.
-
-inputs:
-  botan-modules:
-    description: Comma-separated list of Botan modules to enable
-    required: false
-    default: ""
+name: Build librnp via rnp-src and export paths
+description: |
+  Uses `cargo build --features vendored` to build librnp 0.18.1 + Botan 3.12
+  + json-c + zlib + bzip2 from source via the rnp-src crate (which uses
+  botan-src internally). Exports RNP_INCLUDE_DIR / RNP_LIB_DIR so rnp-rs's
+  build.rs can find the built libraries.
+  No manual curl/tar/configure — everything goes through the Rust build pipeline.
 
 runs:
   using: composite
@@ -15,83 +14,36 @@ runs:
       shell: bash
       run: |
         sudo apt-get update
-        sudo apt-get install -y libjson-c-dev zlib1g-dev libbz2-dev \
-          cmake build-essential python3 curl xz-utils
+        sudo apt-get install -y cmake build-essential python3 curl
 
     - name: Install build deps (macOS)
       if: runner.os == 'macOS'
       shell: bash
       run: brew install cmake python3
 
-    - name: Build Botan 3.12
+    - name: Build librnp + Botan via rnp-src
       shell: bash
       run: |
-        BUILD_PREFIX="$RUNNER_TEMP/rnp-deps"
-        BOTAN_PREFIX="$BUILD_PREFIX/botan"
-        mkdir -p "$BUILD_PREFIX"
-        if [ "$(uname)" = "Darwin" ]; then
-          CC=clang; CXX=clang++
-        else
-          CC=gcc; CXX=g++
-        fi
-        cd "$RUNNER_TEMP"
-        curl -sLO https://botan.randombit.net/releases/Botan-3.12.0.tar.xz
-        tar xf Botan-3.12.0.tar.xz
-        cd Botan-3.12.0
-        if [ -n "${{ inputs.botan-modules }}" ]; then
-          python3 configure.py \
-            --prefix="$BOTAN_PREFIX" \
-            --with-build-dir="$RUNNER_TEMP/botan-build" \
-            --link-method=copy \
-            --cc=$CC --cc-bin=$CXX \
-            --enable-modules=${{ inputs.botan-modules }} \
-            --disable-modules=unsupported
-        else
-          python3 configure.py \
-            --prefix="$BOTAN_PREFIX" \
-            --with-build-dir="$RUNNER_TEMP/botan-build" \
-            --link-method=copy \
-            --cc=$CC --cc-bin=$CXX \
-            --disable-modules=unsupported
-        fi
-        make -f "$RUNNER_TEMP/botan-build/Makefile" -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
-        make -f "$RUNNER_TEMP/botan-build/Makefile" install
-
-    - name: Build librnp 0.18.1
-      shell: bash
-      run: |
-        BUILD_PREFIX="$RUNNER_TEMP/rnp-deps"
-        BOTAN_PREFIX="$BUILD_PREFIX/botan"
-        RNP_PREFIX="$BUILD_PREFIX/rnp"
-        if [ "$(uname)" = "Darwin" ]; then
-          CC=clang; CXX=clang++
-        else
-          CC=gcc; CXX=g++
-        fi
-        cd "$RUNNER_TEMP"
-        curl -sLO https://github.com/rnpgp/rnp/releases/download/v0.18.1/rnp-v0.18.1.tar.gz
-        tar xf rnp-v0.18.1.tar.gz
-        cmake -S rnp-v0.18.1 -B rnp-v0.18.1/build \
-          -DCMAKE_C_COMPILER=$CC -DCMAKE_CXX_COMPILER=$CXX \
-          -DCRYPTO_BACKEND=botan3 \
-          -DBUILD_SHARED_LIBS=ON \
-          -DBUILD_TESTING=OFF \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_INSTALL_PREFIX="$RNP_PREFIX" \
-          -DCMAKE_PREFIX_PATH="$BOTAN_PREFIX"
-        cmake --build rnp-v0.18.1/build --parallel $(nproc 2>/dev/null || sysctl -n hw.ncpu)
-        cmake --install rnp-v0.18.1/build
+        # Trigger rnp-src's build.rs by building the crate. botan-src,
+        # json-c, zlib, bzip2, and librnp 0.18.1 are all compiled from
+        # source into OUT_DIR. We then locate the install prefix.
+        cargo build -p rnp-src
 
     - name: Export librnp paths
       shell: bash
       run: |
-        BUILD_PREFIX="$RUNNER_TEMP/rnp-deps"
-        BOTAN_PREFIX="$BUILD_PREFIX/botan"
-        RNP_PREFIX="$BUILD_PREFIX/rnp"
-        echo "RNP_INCLUDE_DIR=$RNP_PREFIX/include" >> $GITHUB_ENV
-        echo "RNP_LIB_DIR=$RNP_PREFIX/lib" >> $GITHUB_ENV
-        if [ "$(uname)" = "Darwin" ]; then
-          echo "DYLD_LIBRARY_PATH=$RNP_PREFIX/lib:$BOTAN_PREFIX/lib" >> $GITHUB_ENV
-        else
-          echo "LD_LIBRARY_PATH=$RNP_PREFIX/lib:$BOTAN_PREFIX/lib" >> $GITHUB_ENV
+        # rnp-src installs to OUT_DIR/install/{rnp,botan,json-c,zlib,bzip2}/
+        # OUT_DIR is target/<profile>/build/rnp-src-<hash>/out
+        OUT_DIR="$(find target/debug/build -maxdepth 1 -name 'rnp-src-*' -print -quit)/out"
+        if [ -z "$OUT_DIR" ] || [ ! -d "$OUT_DIR/install/rnp" ]; then
+          echo "ERROR: rnp-src build output not found" >&2
+          exit 1
         fi
+        echo "RNP_INCLUDE_DIR=$OUT_DIR/install/rnp/include" >> $GITHUB_ENV
+        echo "RNP_LIB_DIR=$OUT_DIR/install/rnp/lib" >> $GITHUB_ENV
+        # Per-dep lib dirs for the linker
+        echo "DEP_RNP_BOTAN_LIB_DIR=$OUT_DIR/install/botan/lib" >> $GITHUB_ENV
+        echo "DEP_RNP_JSONC_LIB_DIR=$OUT_DIR/install/json-c/lib" >> $GITHUB_ENV
+        echo "DEP_RNP_ZLIB_LIB_DIR=$OUT_DIR/install/zlib/lib" >> $GITHUB_ENV
+        echo "DEP_RNP_BZIP2_LIB_DIR=$OUT_DIR/install/bzip2/lib" >> $GITHUB_ENV
+        echo "Found rnp-src output at: $OUT_DIR"
