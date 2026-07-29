@@ -10,12 +10,18 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Install build deps
+    - name: Install build deps (Linux)
+      if: runner.os == 'Linux'
       shell: bash
       run: |
         sudo apt-get update
         sudo apt-get install -y libjson-c-dev zlib1g-dev libbz2-dev \
           cmake build-essential python3 curl
+
+    - name: Install build deps (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: brew install cmake python3
 
     - name: Build Botan 3.6
       shell: bash
@@ -23,6 +29,12 @@ runs:
         BUILD_PREFIX="$RUNNER_TEMP/rnp-deps"
         BOTAN_PREFIX="$BUILD_PREFIX/botan"
         mkdir -p "$BUILD_PREFIX"
+        # Detect compiler: clang on macOS, gcc elsewhere.
+        if [ "$(uname)" = "Darwin" ]; then
+          CC=clang; CXX=clang++
+        else
+          CC=gcc; CXX=g++
+        fi
         cd "$RUNNER_TEMP"
         curl -sLO https://botan.randombit.net/releases/Botan-3.6.0.tar.xz
         tar xf Botan-3.6.0.tar.xz
@@ -32,7 +44,7 @@ runs:
             --prefix="$BOTAN_PREFIX" \
             --with-build-dir="$RUNNER_TEMP/botan-build" \
             --link-method=copy \
-            --cc=gcc --cc-bin=g++ \
+            --cc=$CC --cc-bin=$CXX \
             --enable-modules=${{ inputs.botan-modules }} \
             --disable-modules=unsupported
         else
@@ -40,10 +52,10 @@ runs:
             --prefix="$BOTAN_PREFIX" \
             --with-build-dir="$RUNNER_TEMP/botan-build" \
             --link-method=copy \
-            --cc=gcc --cc-bin=g++ \
+            --cc=$CC --cc-bin=$CXX \
             --disable-modules=unsupported
         fi
-        make -f "$RUNNER_TEMP/botan-build/Makefile" -j$(nproc)
+        make -f "$RUNNER_TEMP/botan-build/Makefile" -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
         make -f "$RUNNER_TEMP/botan-build/Makefile" install
 
     - name: Build librnp 0.18.1
@@ -52,18 +64,23 @@ runs:
         BUILD_PREFIX="$RUNNER_TEMP/rnp-deps"
         BOTAN_PREFIX="$BUILD_PREFIX/botan"
         RNP_PREFIX="$BUILD_PREFIX/rnp"
+        if [ "$(uname)" = "Darwin" ]; then
+          CC=clang; CXX=clang++
+        else
+          CC=gcc; CXX=g++
+        fi
         cd "$RUNNER_TEMP"
         curl -sLO https://github.com/rnpgp/rnp/releases/download/v0.18.1/rnp-v0.18.1.tar.gz
         tar xf rnp-v0.18.1.tar.gz
         cmake -S rnp-v0.18.1 -B rnp-v0.18.1/build \
-          -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ \
+          -DCMAKE_C_COMPILER=$CC -DCMAKE_CXX_COMPILER=$CXX \
           -DCRYPTO_BACKEND=botan3 \
           -DBUILD_SHARED_LIBS=ON \
           -DBUILD_TESTING=OFF \
           -DCMAKE_BUILD_TYPE=Release \
           -DCMAKE_INSTALL_PREFIX="$RNP_PREFIX" \
           -DCMAKE_PREFIX_PATH="$BOTAN_PREFIX"
-        cmake --build rnp-v0.18.1/build --parallel $(nproc)
+        cmake --build rnp-v0.18.1/build --parallel $(nproc 2>/dev/null || sysctl -n hw.ncpu)
         cmake --install rnp-v0.18.1/build
 
     - name: Export librnp paths
@@ -74,4 +91,8 @@ runs:
         RNP_PREFIX="$BUILD_PREFIX/rnp"
         echo "RNP_INCLUDE_DIR=$RNP_PREFIX/include" >> $GITHUB_ENV
         echo "RNP_LIB_DIR=$RNP_PREFIX/lib" >> $GITHUB_ENV
-        echo "LD_LIBRARY_PATH=$RNP_PREFIX/lib:$BOTAN_PREFIX/lib" >> $GITHUB_ENV
+        if [ "$(uname)" = "Darwin" ]; then
+          echo "DYLD_LIBRARY_PATH=$RNP_PREFIX/lib:$BOTAN_PREFIX/lib" >> $GITHUB_ENV
+        else
+          echo "LD_LIBRARY_PATH=$RNP_PREFIX/lib:$BOTAN_PREFIX/lib" >> $GITHUB_ENV
+        fi
