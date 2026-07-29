@@ -546,17 +546,20 @@ fn build_librnp(src_dir: &Path, prefix: &Path, deps: &Deps) {
 
     // Windows + MSYS2: link against ws2_32 (Winsock) and crypt32 (CryptoAPI).
     // librnp's static Botan references getaddrinfo/freeaddrinfo (via the
-    // socket_init path) and the Cert* APIs in crypt32.lib. Use the _INIT
-    // variant so the flags are prepended to the link line — the GNU ld
-    // linker resolves symbols left-to-right, and -lws2_32 -lcrypt32 need
-    // to come BEFORE libbotan-3.a in the search path. Even with
-    // certstor_system_windows disabled, Winsock symbols still need
-    // explicit linkage via Botan's HTTP utility code.
+    // socket_init path) and the Cert* APIs in crypt32.lib. Set LDFLAGS
+    // environment variable — mingw's g++ wrapper reads it for every link
+    // step, ensuring ws2_32 is always in the search path. CMAKE_*_LINKER_FLAGS
+    // proved unreliable here (ninja generator may not propagate them).
     if cfg!(target_os = "windows") {
-        cmd.args([
-            "-DCMAKE_EXE_LINKER_FLAGS_INIT=-lws2_32 -lcrypt32",
-            "-DCMAKE_SHARED_LINKER_FLAGS_INIT=-lws2_32 -lcrypt32",
-        ]);
+        unsafe {
+            let existing = env::var("LDFLAGS").unwrap_or_default();
+            let new_flags = if existing.is_empty() {
+                "-lws2_32 -lcrypt32".to_string()
+            } else {
+                format!("{existing} -lws2_32 -lcrypt32")
+            };
+            env::set_var("LDFLAGS", new_flags);
+        }
     }
 
     run(&mut cmd, "librnp cmake");
