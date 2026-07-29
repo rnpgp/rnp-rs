@@ -16,7 +16,7 @@ use crate::ffi;
 mod decryptor;
 mod encryptor;
 
-pub use decryptor::{decrypt, decrypt_to, DecryptResult, Decryptor};
+pub use decryptor::{DecryptResult, Decryptor, decrypt, decrypt_to};
 pub use encryptor::Encryptor;
 
 // ---------------------------------------------------------------------------

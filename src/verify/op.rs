@@ -1,7 +1,7 @@
 //! [`VerifyOp`] — builder over `rnp_op_verify_*`.
 
 use crate::context::Context;
-use crate::error::{check, Result};
+use crate::error::{Result, check};
 use crate::ffi;
 use crate::ops::{Input, Output};
 use std::marker::PhantomData;
@@ -15,13 +15,11 @@ pub struct VerifyFlags(pub u32);
 
 impl VerifyFlags {
     /// Don't inspect signatures during decrypt.
-    pub const IGNORE_SIGS_ON_DECRYPT: Self =
-        Self(ffi::RNP_VERIFY_IGNORE_SIGS_ON_DECRYPT as u32);
+    pub const IGNORE_SIGS_ON_DECRYPT: Self = Self(ffi::RNP_VERIFY_IGNORE_SIGS_ON_DECRYPT as u32);
     /// Require all signatures to verify.
     pub const REQUIRE_ALL_SIGS: Self = Self(ffi::RNP_VERIFY_REQUIRE_ALL_SIGS as u32);
     /// Allow hidden (all-zero keyid) recipients.
-    pub const ALLOW_HIDDEN_RECIPIENT: Self =
-        Self(ffi::RNP_VERIFY_ALLOW_HIDDEN_RECIPIENT as u32);
+    pub const ALLOW_HIDDEN_RECIPIENT: Self = Self(ffi::RNP_VERIFY_ALLOW_HIDDEN_RECIPIENT as u32);
 
     pub fn bits(self) -> u32 {
         self.0
@@ -51,11 +49,7 @@ impl<'ctx> VerifyOp<'ctx> {
     /// Begin inline verification. `signed_message` is the message produced
     /// by inline signing; `output` is where the embedded plaintext will be
     /// written (use `Output::to_null()` to discard).
-    pub fn inline(
-        ctx: &'ctx Context,
-        signed_message: &[u8],
-        output: Output,
-    ) -> Result<Self> {
+    pub fn inline(ctx: &'ctx Context, signed_message: &[u8], output: Output) -> Result<Self> {
         let input = Input::from_memory(signed_message)?;
         let mut op: ffi::rnp_op_verify_t = ptr::null_mut();
         unsafe {

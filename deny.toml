@@ -4,10 +4,15 @@
 [advisories]
 # Security advisories from RustSec
 version = 2
-# Ignore specific advisories if needed:
-# ignore = [
-#     { id = "RUSTSEC-0000-0000", reason = "..." }
-# ]
+# rsa 0.9.10 (transitive via sequoia-openpgp, a dev-only dependency
+# used for cross-validation tests) has RUSTSEC-2023-0071 (Marvin
+# Attack). No safe upgrade is available upstream as of 2026-07; the
+# issue is not exploitable in our test paths because we never use rsa
+# for security-sensitive operations — sequoia is purely a sanity-check
+# oracle. Re-evaluate when RustCrypto/RSA cuts a fixed release.
+ignore = [
+    { id = "RUSTSEC-2023-0071", reason = "rsa via sequoia-openpgp (dev-only); no safe upgrade; not on a sensitive path" }
+]
 
 [licenses]
 version = 2
@@ -24,6 +29,10 @@ allow = [
     "Unicode-DFS-2016",
     "Unicode-3.0",
     "CC0-1.0",
+    # CDLA-Permissive-2.0: Community Data License Agreement Permissive 2.0.
+    # Used by webpki-roots (pulled in transitively by ureq's TLS feature)
+    # for the Mozilla CA root bundle. Permissive — no copyleft requirements.
+    "CDLA-Permissive-2.0",
 ]
 
 # Confidence threshold for license detection

@@ -1,7 +1,7 @@
 //! Benchmark: encrypt + decrypt a 4 KB message.
 
-use criterion::{criterion_group, criterion_main, Criterion};
-use rnp::{decrypt, Algorithm, Cipher, Context, Encryptor, Hash, KeyBuilder, KeyUsage, Output};
+use criterion::{Criterion, criterion_group, criterion_main};
+use rnp::{Algorithm, Cipher, Context, Encryptor, Hash, KeyBuilder, KeyUsage, Output, decrypt};
 
 fn bench_encrypt_decrypt(c: &mut Criterion) {
     let ctx = Context::new().expect("ctx");

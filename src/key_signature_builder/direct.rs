@@ -1,6 +1,6 @@
 //! [`DirectSignatureBuilder`] — direct signature on a key (no UID binding).
 
-use crate::error::{self, check, Result};
+use crate::error::{self, Result, check};
 use crate::ffi;
 use crate::key::Key;
 use std::marker::PhantomData;

@@ -1,0 +1,5 @@
+# Pin the edition so future rustfmt versions don't "modernize" the codebase.
+edition = "2024"
+
+# Stable-only options — no nightly features.
+max_width = 100

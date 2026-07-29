@@ -6,7 +6,7 @@
 //! surface in one place.
 
 use crate::context::{Context, KeyringFormat};
-use crate::error::{self, check, Result};
+use crate::error::{self, Result, check};
 use crate::ffi;
 use crate::ops::Input;
 use std::ffi::CString;

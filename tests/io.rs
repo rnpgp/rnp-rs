@@ -79,8 +79,7 @@ fn output_file_overwrite() {
     std::fs::write(&path, b"old contents").expect("seed old file");
 
     let path_str = path.to_str().expect("utf-8 path");
-    let mut out =
-        Output::to_file(path_str, OutputFileFlags::OVERWRITE).expect("file output");
+    let mut out = Output::to_file(path_str, OutputFileFlags::OVERWRITE).expect("file output");
     out.write(b"new").expect("write");
     drop(out);
 

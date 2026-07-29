@@ -2,7 +2,7 @@
 //! functions.
 
 use crate::context::Context;
-use crate::error::{check, Result};
+use crate::error::{Result, check};
 use crate::ffi;
 use crate::ops::{Input, Output};
 
@@ -75,7 +75,11 @@ impl<'a, 'ctx> Decryptor<'a, 'ctx> {
             let input = Input::from_memory(self.ciphertext)?;
             let output = Output::to_memory()?;
             unsafe {
-                check(ffi::rnp_decrypt(self.ctx.ffi, input.as_ptr(), output.as_ptr()))?;
+                check(ffi::rnp_decrypt(
+                    self.ctx.ffi,
+                    input.as_ptr(),
+                    output.as_ptr(),
+                ))?;
             }
             output.into_bytes()?
         };

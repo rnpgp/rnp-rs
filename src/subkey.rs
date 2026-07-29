@@ -5,9 +5,9 @@
 //! [`Subkey`] is therefore a thin newtype over [`Key`](crate::Key): it
 //! forwards via Deref so callers don't have to learn a parallel surface.
 
+use crate::Key;
 use crate::error::Result;
 use crate::ffi;
-use crate::Key;
 use std::marker::PhantomData;
 
 /// Borrowed handle to a subkey. Behaves like a [`Key`] via `Deref`.

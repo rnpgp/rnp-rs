@@ -2,7 +2,7 @@
 //! per-recipient / per-symenc / file-info / format / protection-info.
 
 use crate::context::Context;
-use crate::error::{self, check, Result};
+use crate::error::{self, Result, check};
 use crate::ffi;
 use crate::ffi_safe::{call_for_usize, cstr_to_optional_string, cstr_to_string};
 use std::marker::PhantomData;
@@ -34,7 +34,11 @@ impl<'ctx> VerifyResult<'ctx> {
     pub fn signature_at(&self, idx: usize) -> Result<Option<VerifySignature>> {
         let mut handle: ffi::rnp_op_verify_signature_t = ptr::null_mut();
         unsafe {
-            check(ffi::rnp_op_verify_get_signature_at(self.op, idx, &mut handle))?;
+            check(ffi::rnp_op_verify_get_signature_at(
+                self.op,
+                idx,
+                &mut handle,
+            ))?;
         }
         if handle.is_null() {
             Ok(None)
@@ -73,7 +77,11 @@ impl<'ctx> VerifyResult<'ctx> {
     pub fn recipient_at(&self, idx: usize) -> Result<Option<Recipient>> {
         let mut handle: ffi::rnp_recipient_handle_t = ptr::null_mut();
         unsafe {
-            check(ffi::rnp_op_verify_get_recipient_at(self.op, idx, &mut handle))?;
+            check(ffi::rnp_op_verify_get_recipient_at(
+                self.op,
+                idx,
+                &mut handle,
+            ))?;
         }
         if handle.is_null() {
             Ok(None)

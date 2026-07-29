@@ -1,6 +1,6 @@
 [package]
 name = "rnp-src"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.88"
 authors = ["Ribose Inc. <open.source@ribose.com>"]
@@ -12,15 +12,25 @@ links = "rnp"
 
 [features]
 default = []
-# When enabled, build.rs compiles Botan + json-c + zlib + bzip2 + librnp
-# from source. Off by default so that `cargo publish --verify` (which
-# runs build.rs without consumer features) doesn't trigger the 10+ min
-# Botan compilation. rnp-rs enables this when its `vendored` feature is on.
-compile = ["dep:botan-src", "dep:cmake"]
-
-[dependencies]
-botan-src = { version = "0.31200.0", optional = true }
+# Build librnp with ENABLE_PQC=ON and Botan with PQC modules enabled.
+# PQC + crypto-refresh code paths in librnp 0.18.1 are incompatible with
+# Botan 3.12's opaque EC_Group/EC_Point API; when this feature is on,
+# rnp-src clones librnp HEAD (which has the fixes) instead of using the
+# 0.18.1 release tarball.
+pqc = ["crypto-refresh"]
+# Build librnp with ENABLE_CRYPTO_REFRESH=ON. Same HEAD-vs-0.18.1
+# reasoning as `pqc`.
+crypto-refresh = []
 
 [build-dependencies]
-botan-src = { version = "0.31200.0", optional = true }
-cmake = { version = "0.1", optional = true }
+botan-src = "0.31200"
+cmake = "0.1"
+# Pure-Rust HTTP + tarball extraction so we don't depend on the system
+# having curl + tar in PATH (Windows runners don't always have curl).
+flate2 = "1"
+tar = "0.4"
+# Latest ureq (3.x). Default features include TLS (rustls) so HTTPS works
+# — required because all rnp-src's download URLs are https://. In 3.x the
+# body is read via `res.body_mut().as_reader()` (the older
+# `res.into_reader()` was removed).
+ureq = "3"

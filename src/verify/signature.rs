@@ -1,6 +1,6 @@
 //! [`VerifySignature`] + [`SignatureStatus`] — per-signature verification result.
 
-use crate::error::{self, check, Result};
+use crate::error::{self, Result, check};
 use crate::ffi;
 use crate::ffi_safe::call_for_string;
 use std::ptr;
@@ -50,9 +50,7 @@ impl VerifySignature {
 
     /// Hash algorithm used (e.g. `"SHA256"`).
     pub fn hash(&self) -> Result<String> {
-        call_for_string(|raw| unsafe {
-            ffi::rnp_op_verify_signature_get_hash(self.handle, raw)
-        })
+        call_for_string(|raw| unsafe { ffi::rnp_op_verify_signature_get_hash(self.handle, raw) })
     }
 
     /// Creation and expiration times of the signature.
@@ -74,7 +72,10 @@ impl VerifySignature {
     pub fn handle(&self) -> Result<crate::Signature<'_>> {
         let mut raw: ffi::rnp_signature_handle_t = ptr::null_mut();
         unsafe {
-            check(ffi::rnp_op_verify_signature_get_handle(self.handle, &mut raw))?;
+            check(ffi::rnp_op_verify_signature_get_handle(
+                self.handle,
+                &mut raw,
+            ))?;
         }
         if raw.is_null() {
             return Err(error::Error::NullPointer);

@@ -5,15 +5,13 @@
 //! - export then load preserves fingerprint.
 //! - cleartext tamper at any body position breaks verification.
 
-
-
 mod common;
 use common::signing_key;
 
 use proptest::prelude::*;
 use rnp::{
-    sign_cleartext, Algorithm, Cipher, Context, Encryptor, Hash, KeyBuilder,
-    KeyIdentifier, KeyUsage, LoadSaveFlags, Output,
+    Algorithm, Cipher, Context, Encryptor, Hash, KeyBuilder, KeyIdentifier, KeyUsage,
+    LoadSaveFlags, Output, sign_cleartext,
 };
 
 fn any_plaintext() -> impl Strategy<Value = Vec<u8>> {

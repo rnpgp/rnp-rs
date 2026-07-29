@@ -3,8 +3,8 @@
 #![allow(deprecated)]
 
 use rnp::{
-    from_rnp_code, unknown_variant, Algorithm, Cipher, Compression, Context, ErrorKind, Hash,
-    KeyBuilder, KeyIdentifier, KeyUsage, Output, ProtectOptions, SubkeyBuilder,
+    Algorithm, Cipher, Compression, Context, ErrorKind, Hash, KeyBuilder, KeyIdentifier, KeyUsage,
+    Output, ProtectOptions, SubkeyBuilder, from_rnp_code, unknown_variant,
 };
 use std::str::FromStr;
 
@@ -25,8 +25,7 @@ fn raw_public_data_dumps_as_key_packet() {
     let raw = key.raw_public_data().expect("raw_public_data");
     assert!(!raw.is_empty(), "raw public data should be non-empty");
 
-    let json = rnp::dump_packets_bytes_to_json(&raw, rnp::JsonDumpFlags::default())
-        .expect("dump");
+    let json = rnp::dump_packets_bytes_to_json(&raw, rnp::JsonDumpFlags::default()).expect("dump");
     assert!(
         json.contains("Public Key"),
         "raw public data should dump as a Public Key packet: {json}"

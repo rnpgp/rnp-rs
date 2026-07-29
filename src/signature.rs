@@ -12,7 +12,7 @@
 
 use crate::algorithm::Hash;
 use crate::context::Context;
-use crate::error::{check, Result};
+use crate::error::{Result, check};
 use crate::ffi;
 use crate::key::Key;
 use crate::ops::{Input, Output};
@@ -193,7 +193,11 @@ impl<'a, 'ctx> Signer<'a, 'ctx> {
 
             for spec in &self.signers {
                 let mut sig_handle: ffi::rnp_op_sign_signature_t = ptr::null_mut();
-                check(ffi::rnp_op_sign_add_signature(op, spec.handle, &mut sig_handle))?;
+                check(ffi::rnp_op_sign_add_signature(
+                    op,
+                    spec.handle,
+                    &mut sig_handle,
+                ))?;
                 let hash = spec.hash.unwrap_or(self.default_hash);
                 let hash_c = CString::new(hash.as_str()).unwrap();
                 let _ = ffi::rnp_op_sign_signature_set_hash(sig_handle, hash_c.as_ptr());
@@ -231,11 +235,7 @@ pub fn sign(ctx: &Context, message: &[u8], signing_key: &Key<'_>) -> Result<Vec<
 }
 
 /// Sign `message`, producing only the detached signature bytes.
-pub fn sign_detached(
-    ctx: &Context,
-    message: &[u8],
-    signing_key: &Key<'_>,
-) -> Result<Vec<u8>> {
+pub fn sign_detached(ctx: &Context, message: &[u8], signing_key: &Key<'_>) -> Result<Vec<u8>> {
     Signer::new(ctx, message, Mode::Detached)
         .add_signer(signing_key)
         .build_to_memory()
@@ -243,11 +243,7 @@ pub fn sign_detached(
 
 /// Sign `message` as a cleartext-signed message. The plaintext remains
 /// human-readable; the signature is appended as an ASCII-armored block.
-pub fn sign_cleartext(
-    ctx: &Context,
-    message: &[u8],
-    signing_key: &Key<'_>,
-) -> Result<Vec<u8>> {
+pub fn sign_cleartext(ctx: &Context, message: &[u8], signing_key: &Key<'_>) -> Result<Vec<u8>> {
     Signer::new(ctx, message, Mode::Cleartext)
         .add_signer(signing_key)
         .build_to_memory()

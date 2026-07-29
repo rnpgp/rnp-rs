@@ -49,7 +49,12 @@ fn cipher_block_sizes_match_canonical_values() {
         assert_eq!(c.block_size(), 16, "{c:?} should be 128-bit block");
     }
     // Legacy 64-bit block ciphers.
-    for c in [Cipher::Blowfish, Cipher::Cast5, Cipher::Tripledes, Cipher::Idea] {
+    for c in [
+        Cipher::Blowfish,
+        Cipher::Cast5,
+        Cipher::Tripledes,
+        Cipher::Idea,
+    ] {
         assert_eq!(c.block_size(), 8, "{c:?} should be 64-bit block");
     }
 }
@@ -57,12 +62,23 @@ fn cipher_block_sizes_match_canonical_values() {
 #[test]
 fn algorithm_categorization_partitions_correctly() {
     // Signature-capable.
-    for a in [Algorithm::Rsa, Algorithm::Dsa, Algorithm::Ecdsa, Algorithm::Eddsa, Algorithm::Sm2] {
+    for a in [
+        Algorithm::Rsa,
+        Algorithm::Dsa,
+        Algorithm::Ecdsa,
+        Algorithm::Eddsa,
+        Algorithm::Sm2,
+    ] {
         assert!(a.is_signature(), "{a:?} should be signature-capable");
     }
 
     // Encryption-capable.
-    for a in [Algorithm::Rsa, Algorithm::Ecdh, Algorithm::ElGamal, Algorithm::Sm2] {
+    for a in [
+        Algorithm::Rsa,
+        Algorithm::Ecdh,
+        Algorithm::ElGamal,
+        Algorithm::Sm2,
+    ] {
         assert!(a.is_encryption(), "{a:?} should be encryption-capable");
     }
 
@@ -99,7 +115,7 @@ fn algorithm_categorization_partitions_correctly() {
 fn algorithm_as_str_round_trips_via_librnp() {
     // Indirect: librnp recognises these names. supports_feature returns
     // true for them.
-    use rnp::{supports_feature, FeatureType};
+    use rnp::{FeatureType, supports_feature};
     for a in [
         Algorithm::Rsa,
         Algorithm::Dsa,
@@ -120,7 +136,7 @@ fn algorithm_as_str_round_trips_via_librnp() {
 
 #[test]
 fn compression_as_str_matches_librnp_names() {
-    use rnp::{supports_feature, FeatureType};
+    use rnp::{FeatureType, supports_feature};
     for c in [Compression::Zip, Compression::Zlib, Compression::Bzip2] {
         assert!(
             supports_feature(FeatureType::CompressionAlgorithm, c.as_str()).unwrap_or(false),

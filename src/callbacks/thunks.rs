@@ -7,9 +7,9 @@ use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
 use std::os::raw::c_void;
 
+use super::Callbacks;
 use super::registry::{KeyProviderHolder, PasswordHolder};
 use super::types::{KeyRequestOutcome, RequestedKeyType};
-use super::Callbacks;
 
 // Bridges librnp's C callback to our `PasswordProvider` trait. We do not
 // currently surface the `key` argument as a fully fledged `Key` because doing
@@ -47,7 +47,7 @@ pub(crate) unsafe extern "C" fn password_thunk(
         if bytes.len() + 1 > buf_len {
             return false;
         }
-        std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf as *mut u8, bytes.len());
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf.cast::<u8>(), bytes.len());
         *buf.add(bytes.len()) = 0;
         true
     }

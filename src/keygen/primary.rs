@@ -2,15 +2,15 @@
 
 use crate::algorithm::{Algorithm, Cipher, Compression, Curve, Hash, KeyUsage};
 use crate::context::Context;
-use crate::error::{self, check, Result};
+use crate::error::{self, Result, check};
 use crate::ffi;
 use crate::key::Key;
 use std::ffi::CString;
 use std::ptr;
 
-use super::ProtectConfig;
 #[cfg(feature = "pqc")]
 use super::PqcAlgorithm;
+use super::ProtectConfig;
 use super::SubkeyBuilder;
 
 /// Builder over `rnp_op_generate_*` for primary keys.
@@ -206,9 +206,7 @@ impl KeyBuilder {
     /// Requires the `pqc` Cargo feature.
     #[cfg(feature = "pqc")]
     pub fn add_pqc_encryption_subkey(self, alg: PqcAlgorithm) -> Self {
-        self.add_subkey(
-            SubkeyBuilder::new_str(alg.as_str()).add_usage(KeyUsage::EncryptComms),
-        )
+        self.add_subkey(SubkeyBuilder::new_str(alg.as_str()).add_usage(KeyUsage::EncryptComms))
     }
 
     /// Add a PQC signing subkey (e.g. ML-DSA-65+ED25519).
@@ -224,7 +222,11 @@ impl KeyBuilder {
         let alg_c = CString::new(self.alg.as_str()).unwrap();
         let mut op: ffi::rnp_op_generate_t = ptr::null_mut();
         unsafe {
-            check(ffi::rnp_op_generate_create(&mut op, ctx.ffi, alg_c.as_ptr()))?;
+            check(ffi::rnp_op_generate_create(
+                &mut op,
+                ctx.ffi,
+                alg_c.as_ptr(),
+            ))?;
         }
 
         let setters = unsafe { apply_setters(op, &self) };

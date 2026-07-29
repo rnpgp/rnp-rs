@@ -6,7 +6,7 @@
 //! `rnp_ffi_set_key_provider`, and `rnp_set_timestamp`.
 
 use crate::context::Context;
-use crate::error::{self, check, Result};
+use crate::error::{self, Result, check};
 use crate::ffi;
 use crate::ffi_safe::{call_for_bool, call_for_optional_string, call_for_string, call_for_usize};
 use std::ffi::CString;
@@ -195,9 +195,7 @@ impl Context {
 pub fn supports_feature(typ: FeatureType, name: &str) -> Result<bool> {
     let type_c = CString::new(typ.as_str()).unwrap();
     let name_c = CString::new(name).map_err(|_| error::Error::NulByte)?;
-    call_for_bool(|out| unsafe {
-        ffi::rnp_supports_feature(type_c.as_ptr(), name_c.as_ptr(), out)
-    })
+    call_for_bool(|out| unsafe { ffi::rnp_supports_feature(type_c.as_ptr(), name_c.as_ptr(), out) })
 }
 
 /// List all feature names supported under `typ`. Returned as a JSON array

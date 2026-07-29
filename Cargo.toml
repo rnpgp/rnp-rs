@@ -34,15 +34,21 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
-snafu = "0.8"
+snafu = "0.9"
 rnp-src = { version = "0.1", path = "rnp-src", optional = true }
 
 [build-dependencies]
 bindgen = "0.72"
+pkg-config = "0.3"
+# rnp-src is also a build-dependency: rnp-rs's build.rs reads the
+# `links::DEPS` registry and the `links::lib_dir_env_var` helper to stay
+# in sync with whatever deps rnp-src decides to build. The `vendored`
+# Cargo feature pulls this in at build time.
+rnp-src = { version = "0.1", path = "rnp-src", optional = true }
 
 [dev-dependencies]
 proptest = "1"
-criterion = "0.5"
+criterion = "0.8"
 sequoia-openpgp = { version = "2", default-features = false, features = ["crypto-rust", "compression-deflate", "allow-experimental-crypto", "allow-variable-time-crypto"] }
 rnp-sexp = "0.1"
 
@@ -64,14 +70,14 @@ default = []
 # source at build time via the rnp-src crate. Fully self-contained — no
 # system librnp/Botan needed. First build takes ~10 min; cached in
 # OUT_DIR after that. Requires: C/C++ compiler, cmake, python3, curl, tar.
-vendored = ["dep:rnp-src", "rnp-src/compile"]
+vendored = ["dep:rnp-src"]
 # Implies `vendored`. (Future: pass module filtering to rnp-src.)
 vendored-minimal = ["vendored"]
 # Expose PQC algorithm constants in bindgen. When combined with
-# `vendored`, also builds librnp with ENABLE_PQC=ON.
-pqc = []
+# `vendored`, also builds librnp with ENABLE_PQC=ON (forwarded to rnp-src).
+pqc = ["rnp-src?/pqc"]
 # Expose v6 key / crypto-refresh features in bindgen.
-crypto-refresh = []
+crypto-refresh = ["rnp-src?/crypto-refresh"]
 # Enable `Context::set_log_fd` / `set_log_file`.
 logging = []
 # Pull in sequoia-openpgp for cross-validation tests.

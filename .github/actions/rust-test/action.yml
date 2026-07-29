@@ -1,0 +1,95 @@
+# Reusable composite action: install build deps → cargo build/test with
+# --features vendored. Used by bench, beta, nightly, miri.
+#
+# Caller MUST run `actions/checkout@v7` before this action.
+name: Run Rust build/test with vendored librnp
+
+inputs:
+  toolchain:
+    description: Rust toolchain channel (stable, beta, nightly, 1.88.0)
+    required: true
+  components:
+    description: Comma-separated components to install (clippy, miri, rustfmt, ...)
+    required: false
+    default: ""
+  command:
+    description: cargo subcommand to run (build, test, bench, clippy, miri test)
+    required: false
+    default: "test"
+  extra-args:
+    description: Extra args appended after `cargo <command>` (e.g. --features ...).
+    required: false
+    default: ""
+  env-vars:
+    description: |
+      Multiline `KEY=value` pairs written to GITHUB_ENV before the cargo
+      command runs.
+    required: false
+    default: ""
+  pre-setup:
+    description: Multiline shell script run after build deps install, before cargo.
+    required: false
+    default: ""
+  post-commands:
+    description: |
+      Multiline shell script run after the main cargo command. Always
+      runs with continue-on-error.
+    required: false
+    default: ""
+  allow-failure:
+    description: If "true", treat non-zero exit on the main cargo command as warning.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: ${{ inputs.toolchain }}
+        components: ${{ inputs.components }}
+
+    - name: Install build deps (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake build-essential python3 curl
+
+    - name: Install build deps (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: brew install cmake python3
+
+    - uses: actions/cache@v6
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: rust-test-${{ inputs.toolchain }}-${{ hashFiles('Cargo.lock', 'rnp-src/build.rs') }}
+
+    - name: Pre-setup
+      if: inputs.pre-setup != ''
+      shell: bash
+      run: ${{ inputs.pre-setup }}
+
+    - name: Set env vars
+      if: inputs.env-vars != ''
+      shell: bash
+      run: |
+        while IFS= read -r line; do
+          [ -z "$line" ] && continue
+          echo "$line" >> "$GITHUB_ENV"
+        done <<< "${{ inputs.env-vars }}"
+
+    - name: cargo ${{ inputs.command }}
+      shell: bash
+      continue-on-error: ${{ inputs.allow-failure == 'true' }}
+      run: cargo ${{ inputs.command }} --features vendored ${{ inputs.extra-args }} --no-fail-fast
+
+    - name: Post-commands
+      if: inputs.post-commands != '' && always()
+      shell: bash
+      continue-on-error: true
+      run: ${{ inputs.post-commands }}

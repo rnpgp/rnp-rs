@@ -3,7 +3,7 @@
 
 mod common;
 
-use rnp::{Context, KeyBuilder, KeyUsage, Algorithm, Hash};
+use rnp::{Algorithm, Context, Hash, KeyBuilder, KeyUsage};
 use rnp_sexp::Sexp;
 
 #[test]
@@ -25,7 +25,10 @@ fn rnp_sexp_round_trips_canonical() {
         Sexp::string("public-key"),
         Sexp::list(vec![
             Sexp::string("rsa"),
-            Sexp::list(vec![Sexp::string("n"), Sexp::string(b"\x01\x02\x03".to_vec())]),
+            Sexp::list(vec![
+                Sexp::string("n"),
+                Sexp::string(b"\x01\x02\x03".to_vec()),
+            ]),
         ]),
     ]);
     let canonical = original.to_canonical();

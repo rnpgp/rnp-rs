@@ -29,7 +29,11 @@ impl<'ctx> Key<'ctx> {
         use crate::ops::Output;
         let output = Output::to_memory()?;
         unsafe {
-            check(ffi::rnp_key_export(self.handle, output.as_ptr(), flags.bits()))?;
+            check(ffi::rnp_key_export(
+                self.handle,
+                output.as_ptr(),
+                flags.bits(),
+            ))?;
         }
         output.into_bytes()
     }
@@ -57,7 +61,7 @@ impl<'ctx> Key<'ctx> {
         uid: Option<&str>,
         flags: ExportFlags,
     ) -> crate::error::Result<Vec<u8>> {
-        use crate::error::{check, Error};
+        use crate::error::{Error, check};
         use crate::ops::Output;
         let subkey_handle = subkey.map(|k| k.handle).unwrap_or(self.handle);
         let uid_c = uid
@@ -94,9 +98,7 @@ impl<'ctx> Key<'ctx> {
 
     /// The key's primary user id, if any.
     pub fn primary_uid(&self) -> crate::error::Result<Option<String>> {
-        call_for_optional_string(|out| unsafe {
-            ffi::rnp_key_get_primary_uid(self.handle, out)
-        })
+        call_for_optional_string(|out| unsafe { ffi::rnp_key_get_primary_uid(self.handle, out) })
     }
 
     /// Algorithm name (e.g. `"RSA"`, `"EDDSA"`).
@@ -166,7 +168,9 @@ impl<'ctx> Key<'ctx> {
     /// [`Self::allows_usage`] to test individual usages.
     pub fn allows_usage(&self, usage: keygen::KeyUsage) -> crate::error::Result<bool> {
         let usage_c = CString::new(usage.as_str()).unwrap();
-        call_for_bool(|out| unsafe { ffi::rnp_key_allows_usage(self.handle, usage_c.as_ptr(), out) })
+        call_for_bool(|out| unsafe {
+            ffi::rnp_key_allows_usage(self.handle, usage_c.as_ptr(), out)
+        })
     }
 
     // --- booleans --------------------------------------------------------
@@ -287,7 +291,11 @@ impl<'ctx> Key<'ctx> {
         use crate::error::check;
         let mut handle: ffi::rnp_uid_handle_t = ptr::null_mut();
         unsafe {
-            check(ffi::rnp_key_get_uid_handle_at(self.handle, idx, &mut handle))?;
+            check(ffi::rnp_key_get_uid_handle_at(
+                self.handle,
+                idx,
+                &mut handle,
+            ))?;
         }
         if handle.is_null() {
             Ok(None)
@@ -308,7 +316,6 @@ impl<'ctx> Key<'ctx> {
     }
 
     pub fn subkey_at(&self, idx: usize) -> crate::error::Result<Option<crate::Subkey<'_>>> {
-        
         let mut handle: ffi::rnp_key_handle_t = ptr::null_mut();
         unsafe {
             crate::error::check(ffi::rnp_key_get_subkey_at(self.handle, idx, &mut handle))?;
@@ -332,7 +339,6 @@ impl<'ctx> Key<'ctx> {
     }
 
     pub fn signature_at(&self, idx: usize) -> crate::error::Result<Option<crate::Signature<'_>>> {
-        
         let mut handle: ffi::rnp_signature_handle_t = ptr::null_mut();
         unsafe {
             crate::error::check(ffi::rnp_key_get_signature_at(self.handle, idx, &mut handle))?;
@@ -347,7 +353,10 @@ impl<'ctx> Key<'ctx> {
     pub fn signatures(&self) -> crate::error::Result<Vec<crate::Signature<'_>>> {
         let n = self.signature_count()?;
         (0..n)
-            .map(|i| self.signature_at(i)?.ok_or(crate::error::Error::NullPointer))
+            .map(|i| {
+                self.signature_at(i)?
+                    .ok_or(crate::error::Error::NullPointer)
+            })
             .collect()
     }
 

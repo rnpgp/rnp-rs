@@ -9,9 +9,12 @@ on:
   pull_request:
   workflow_dispatch:
 
-# Cancel superseded runs (e.g. push-while-PR-open).
+# Cancel superseded runs of the SAME PR / branch. Note: the group key
+# intentionally does NOT include github.event_name, so a push to a
+# branch that has an open PR will cancel the in-flight pull_request
+# run (and vice versa) — they share the group key.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -20,6 +23,10 @@ env:
   CARGO_NET_RETRY: 10
   RUST_BACKTRACE: short
   RUSTFLAGS: -D warnings
+  # Homebrew added tap-trust requirements that block `brew install` on
+  # runners without explicit trust. Disable the check; we install only
+  # well-known packages anyway.
+  HOMEBREW_NO_REQUIRE_TAP_TRUST: "1"
 
 jobs:
   # ---------------------------------------------------------------------
@@ -33,7 +40,10 @@ jobs:
       - uses: crate-ci/typos@v1.48.0
 
   # ---------------------------------------------------------------------
-  # Default-feature build against system-installed librnp.
+  # Lint + test with vendored build (rnp-src compiles librnp from source).
+  # The "default" name is kept for CI history continuity; all cargo
+  # commands now use --features vendored so we have ONE build path —
+  # rnp-src (with botan-src) owns all version pinning.
   # ---------------------------------------------------------------------
   system:
     name: default (${{ matrix.os }})
@@ -42,7 +52,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, macos-14]
+        os: [ubuntu-22.04, ubuntu-24.04-arm, macos-15-intel, macos-14, macos-26]
     steps:
       - uses: actions/checkout@v7
 
@@ -50,13 +60,15 @@ jobs:
         with:
           components: clippy, rustfmt
 
-      - name: Install librnp (macOS)
-        if: matrix.os == 'macos-14'
-        run: brew install rnp
+      - name: Install build deps (Linux)
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential python3 curl
 
-      - name: Install librnp (Linux)
-        if: matrix.os == 'ubuntu-22.04'
-        uses: ./.github/actions/install-librnp
+      - name: Install build deps (macOS)
+        if: startsWith(matrix.os, 'macos')
+        run: brew install cmake python3
 
       - uses: actions/cache@v6
         with:
@@ -64,21 +76,21 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: system-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
+          key: system-${{ matrix.os }}-${{ hashFiles('Cargo.lock', 'rnp-src/build.rs') }}
 
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
 
       - name: cargo clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --all-targets --features vendored -- -D warnings
 
       - name: cargo test
-        run: cargo test --no-fail-fast
+        run: cargo test --features vendored --no-fail-fast
 
       - name: cargo doc
         env:
           RUSTDOCFLAGS: -D warnings
-        run: cargo doc --no-deps
+        run: cargo doc --no-deps --features vendored
 
   # ---------------------------------------------------------------------
   # MSRV check: ensure the crate compiles on the declared minimum
@@ -93,17 +105,20 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@1.88.0
 
-      - name: Install librnp
-        uses: ./.github/actions/install-librnp
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential python3 curl
 
       - name: cargo build (MSRV)
-        run: cargo build --all-targets
+        run: cargo build --all-targets --features vendored
 
       - name: cargo test (MSRV)
-        run: cargo test --no-fail-fast
+        run: cargo test --features vendored --no-fail-fast
 
   # ---------------------------------------------------------------------
-  # Vendored build — statically link librnp built from vendor/rnp/.
+  # Vendored build — rnp-src crate compiles librnp + Botan + json-c +
+  # zlib + bzip2 from source. No system librnp or Botan needed.
   # ---------------------------------------------------------------------
   vendored:
     name: vendored (${{ matrix.os }})
@@ -112,24 +127,25 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, macos-14]
+        os: [ubuntu-22.04, ubuntu-24.04-arm, macos-15-intel, macos-14, macos-26]
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: recursive
 
       - uses: dtolnay/rust-toolchain@stable
 
+      # rnp-src builds json-c, zlib, bzip2 from source too, but we
+      # still need cmake + a C/C++ toolchain. Botan is built from source
+      # by botan-src transitively, so we do NOT install libbotan-* here.
       - name: Install build deps (macOS)
-        if: matrix.os == 'macos-14'
-        run: brew install botan json-c zlib bzip2 cmake
+        if: startsWith(matrix.os, 'macos')
+        run: brew install json-c zlib bzip2 cmake
 
       - name: Install build deps (Linux)
-        if: matrix.os == 'ubuntu-22.04'
+        if: startsWith(matrix.os, 'ubuntu')
         run: |
           sudo apt-get update
-          sudo apt-get install -y libbotan-2-dev libbotan-3-dev \
-            libjson-c-dev zlib1g-dev libbz2-dev cmake
+          sudo apt-get install -y libjson-c-dev zlib1g-dev libbz2-dev cmake \
+            build-essential python3 curl
 
       - uses: actions/cache@v6
         with:
@@ -137,8 +153,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-            vendor/rnp/build
-          key: vendored-${{ matrix.os }}-${{ hashFiles('Cargo.lock', 'vendor/rnp/CMakeLists.txt') }}
+          key: vendored-${{ matrix.os }}-${{ hashFiles('Cargo.lock', 'rnp-src/build.rs') }}
 
       - name: cargo test --features vendored
         run: cargo test --features vendored --no-fail-fast
@@ -150,58 +165,19 @@ jobs:
     name: pqc + crypto-refresh
     needs: typos
     runs-on: ubuntu-22.04
-    env:
-      BOTAN_PREFIX: $RUNNER_TEMP/rnp-deps/botan
-      RNP_PREFIX: $RUNNER_TEMP/rnp-deps/rnp
     steps:
       - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
 
+      # rnp-src + botan-src-compat (3.7.1) build Botan + librnp from
+      # source when pqc + crypto-refresh are on. Older Botan is needed
+      # because librnp 0.18.1 references EC_Group / EC_Point by value,
+      # which Botan 3.11+ made opaque (PIMPL).
       - name: Install build deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y libjson-c-dev zlib1g-dev libbz2-dev cmake \
-            python3 python3-pip xz-utils
-
-      - name: Build Botan 3.6 with PQC
-        run: |
-          mkdir -p $RUNNER_TEMP/rnp-deps
-          cd $RUNNER_TEMP
-          curl -sLO https://botan.randombit.net/releases/Botan-3.6.0.tar.xz
-          tar xf Botan-3.6.0.tar.xz
-          cd Botan-3.6.0
-          python3 configure.py \
-            --prefix=$BOTAN_PREFIX \
-            --with-build-dir=$RUNNER_TEMP/botan-build \
-            --link-method=copy \
-            --cc=gcc --cc-bin=g++ \
-            --enable-modules=ml_kem,ml_dsa,slh_dsa_sha2,slh_dsa_shake,ecdh,ecdsa,ed25519,ed448,x25519,x448,sm2,sm3,sm4,rsa,dsa,elgamal,argon2,sha1,sha2_32,sha2_64,sha3,keccak,aes,chacha20poly1305,gcm,ocb,xts,twofish,blowfish,cast128,camellia,idea,des,hmac,hmac_drbg,hkdf,pbkdf2,pgp_s2k,auto_rng,system_rng,chacha_rng,ffi
-          make -f $RUNNER_TEMP/botan-build/Makefile -j$(nproc)
-          make -f $RUNNER_TEMP/botan-build/Makefile install
-
-      - name: Checkout rnp
-        uses: actions/checkout@v7
-        with:
-          repository: rnpgp/rnp
-          ref: main
-          path: rnp-src
-          submodules: recursive
-
-      - name: Build rnp with ENABLE_PQC=ON
-        run: |
-          cmake -S rnp-src -B rnp-src/build \
-            -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ \
-            -DCRYPTO_BACKEND=botan3 \
-            -DENABLE_PQC=ON \
-            -DENABLE_CRYPTO_REFRESH=ON \
-            -DBUILD_SHARED_LIBS=ON \
-            -DBUILD_TESTING=OFF \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=$RNP_PREFIX \
-            -DCMAKE_PREFIX_PATH=$BOTAN_PREFIX
-          cmake --build rnp-src/build --parallel $(nproc)
-          cmake --install rnp-src/build
+          sudo apt-get install -y cmake build-essential python3 curl
 
       - uses: actions/cache@v6
         with:
@@ -209,14 +185,10 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: pqc-${{ hashFiles('Cargo.lock') }}
+          key: pqc-vendored-${{ hashFiles('Cargo.lock', 'rnp-src/build.rs') }}
 
-      - name: cargo test --features pqc,crypto-refresh
-        run: |
-          export RNP_INCLUDE_DIR=$RNP_PREFIX/include
-          export RNP_LIB_DIR=$RNP_PREFIX/lib
-          export LD_LIBRARY_PATH=$RNP_PREFIX/lib:$BOTAN_PREFIX/lib
-          cargo test --features pqc,crypto-refresh --no-fail-fast
+      - name: cargo test --features vendored,pqc,crypto-refresh
+        run: cargo test --features vendored,pqc,crypto-refresh --no-fail-fast
 
   # ---------------------------------------------------------------------
   # cargo-deny: license and security advisory checks.
@@ -228,8 +200,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          arguments: --all-features check
 
   # ---------------------------------------------------------------------
   # cargo-semver-checks: catch breaking API changes against the
@@ -247,8 +217,10 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Install librnp
-        uses: ./.github/actions/install-librnp
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential python3 curl
 
       - name: Install cargo-semver-checks
         run: cargo install cargo-semver-checks --locked
@@ -257,35 +229,64 @@ jobs:
         run: cargo semver-checks check-release 2>&1 || true
 
   # ---------------------------------------------------------------------
-  # Windows build — validate the binding against a vcpkg-installed
-  # librnp. Currently allow-failure until vcpkg coverage is confirmed.
+  # Windows build — uses MSYS2 UCRT64 toolchain (same approach as
+  # librnp's own CI). rnp-src builds librnp + Botan + json-c + zlib +
+  # bzip2 from source via gcc inside MSYS2; this avoids the missing
+  # `getopt.h` issue that breaks MSVC builds of librnp 0.18.1.
   # ---------------------------------------------------------------------
   windows:
-    name: windows
+    name: windows (MSYS2 UCRT64 + vendored)
     needs: typos
     runs-on: windows-2022
     continue-on-error: true
+    timeout-minutes: 45
+    env:
+      # Override cargo's jobserver semaphore — MSYS2's make can't parse
+      # the `__rust_jobserver_semaphore_*` string cargo passes, so it
+      # falls back to -j1 and Botan takes 30+ min single-threaded.
+      # Setting CARGO_MAKEFLAGS to a plain -j4 means botan-src's make()
+      # passes MAKEFLAGS=-j4 which MSYS2's make understands.
+      CARGO_MAKEFLAGS: "-j4"
     steps:
       - uses: actions/checkout@v7
 
+      - name: Set up MSYS2 UCRT64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          # Inherit Windows PATH so cargo/rustc (installed by
+          # dtolnay/rust-toolchain above) are visible inside the MSYS2
+          # shell. Without this, MSYS2 starts with a minimal PATH and
+          # `cargo: command not found`.
+          path-type: inherit
+          install: >-
+            base-devel
+            tar
+            curl
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-make
+            mingw-w64-ucrt-x86_64-python
+
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
 
-      - name: Install librnp via vcpkg
-        run: |
-          vcpkg install rnp librnp
-          echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> $GITHUB_ENV
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: vendored-windows-gnu-${{ hashFiles('Cargo.lock', 'rnp-src/build.rs') }}
 
-      - name: cargo build (Windows)
-        env:
-          RNP_INCLUDE_DIR: "$VCPKG_INSTALLATION_ROOT/installed/x64-windows/include"
-          RNP_LIB_DIR: "$VCPKG_INSTALLATION_ROOT/installed/x64-windows/lib"
-        run: cargo build --all-targets
-
-      - name: cargo test (Windows)
-        env:
-          RNP_INCLUDE_DIR: "$VCPKG_INSTALLATION_ROOT/installed/x64-windows/include"
-          RNP_LIB_DIR: "$VCPKG_INSTALLATION_ROOT/installed/x64-windows/lib"
-        run: cargo test --no-fail-fast
+      # Run inside the MSYS2 shell so PATH, CC, CXX all resolve to the
+      # mingw gcc. rnp-src/build.rs's `gcc`/`g++`/`ar`/`make`/`nproc`
+      # calls find MSYS2 binaries on PATH.
+      - name: cargo test --features vendored (MSYS2 UCRT64)
+        shell: msys2 {0}
+        run: cargo test --features vendored --target x86_64-pc-windows-gnu --no-fail-fast
 
   # ---------------------------------------------------------------------
   # Miri — run the unsafe-code paths (ffi_safe, callbacks, Drop impls)
@@ -299,18 +300,15 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v7
-
-      - uses: dtolnay/rust-toolchain@nightly
+      - uses: ./.github/actions/rust-test
         with:
+          toolchain: nightly
           components: miri
-
-      - name: Install librnp
-        uses: ./.github/actions/install-librnp
-
-      - name: cargo miri (lib unit tests)
-        env:
-          MIRIFLAGS: "-Zmiri-permissive-provenance"
-        run: cargo +nightly miri test --lib || true
+          command: miri test
+          extra-args: --lib
+          env-vars: |
+            MIRIFLAGS=-Zmiri-permissive-provenance
+          allow-failure: "true"
 
   # ---------------------------------------------------------------------
   # Performance regression — compare benches/ against the committed
@@ -324,21 +322,14 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v7
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Install librnp
-        uses: ./.github/actions/install-librnp
-
-      - name: Install critcmp
-        run: cargo install critcmp --locked || true
-
-      - name: Run benchmarks
-        run: cargo bench --no-run
-
-      - name: Smoke-run one benchmark
-        run: cargo bench --bench sign_verify -- --quick
-        continue-on-error: true
+      - uses: ./.github/actions/rust-test
+        with:
+          toolchain: stable
+          pre-setup: cargo install critcmp --locked || true
+          command: bench
+          extra-args: --no-run
+          post-commands: cargo bench --bench sign_verify -- --quick || true
+          allow-failure: "true"
 
   # ---------------------------------------------------------------------
   # Rust beta — catches upcoming stable regressions early.
@@ -350,17 +341,12 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v7
-
-      - uses: dtolnay/rust-toolchain@beta
-
-      - name: Install librnp
-        uses: ./.github/actions/install-librnp
-
-      - name: cargo build (beta)
-        run: cargo build --all-targets
-
-      - name: cargo test (beta)
-        run: cargo test --no-fail-fast
+      - uses: ./.github/actions/rust-test
+        with:
+          toolchain: beta
+          command: test
+          extra-args: --all-targets
+          allow-failure: "true"
 
   # ---------------------------------------------------------------------
   # Rust nightly — catches nightly breakage. allow-failure since nightly
@@ -373,14 +359,9 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v7
-
-      - uses: dtolnay/rust-toolchain@nightly
-
-      - name: Install librnp
-        uses: ./.github/actions/install-librnp
-
-      - name: cargo build (nightly)
-        run: cargo build --all-targets || true
-
-      - name: cargo test (nightly)
-        run: cargo test --no-fail-fast || true
+      - uses: ./.github/actions/rust-test
+        with:
+          toolchain: nightly
+          command: test
+          extra-args: --all-targets
+          allow-failure: "true"

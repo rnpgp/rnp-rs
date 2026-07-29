@@ -9,7 +9,7 @@
 //! holder types, and C-side thunks are in [`crate::callbacks`].
 
 use crate::callbacks::Callbacks;
-use crate::error::{self, check, Result};
+use crate::error::{self, Result, check};
 use crate::ffi;
 use std::ffi::CString;
 use std::ptr;
@@ -30,10 +30,7 @@ impl Context {
     }
 
     /// Create a new context with explicit keyring formats.
-    pub fn with_format(
-        pub_format: KeyringFormat,
-        sec_format: KeyringFormat,
-    ) -> Result<Self> {
+    pub fn with_format(pub_format: KeyringFormat, sec_format: KeyringFormat) -> Result<Self> {
         let pub_c = CString::new(pub_format.as_str()).unwrap();
         let sec_c = CString::new(sec_format.as_str()).unwrap();
         let mut ffi_h: ffi::rnp_ffi_t = ptr::null_mut();
@@ -55,10 +52,7 @@ impl Context {
 
     /// Install a password provider. Must be called before any operation that
     /// may need to unlock a secret key.
-    pub fn set_password_provider(
-        &mut self,
-        provider: Box<dyn crate::callbacks::PasswordProvider>,
-    ) {
+    pub fn set_password_provider(&mut self, provider: Box<dyn crate::callbacks::PasswordProvider>) {
         self.callbacks.set_password(self.ffi, provider);
     }
 

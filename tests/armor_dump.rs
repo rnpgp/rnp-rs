@@ -1,13 +1,11 @@
 //! Phase 7: ASCII armor / dearmor / packet dumps.
 
-
-
 mod common;
 use common::signing_key;
 
 use rnp::{
-    armor_bytes, dearmor_bytes, dump_packets_bytes_to_json, ArmorType,
-    Context, DumpFlags, JsonDumpFlags, JsonFlags,
+    ArmorType, Context, DumpFlags, JsonDumpFlags, JsonFlags, armor_bytes, dearmor_bytes,
+    dump_packets_bytes_to_json,
 };
 
 #[test]
@@ -25,9 +23,7 @@ fn armor_dearmor_roundtrip() {
 fn dump_packets_json_is_valid_json_object() {
     let ctx = Context::new().expect("ctx");
     let key = signing_key(&ctx, "dumper <dumper@example.com>");
-    let exported = key
-        .export(rnp::ExportFlags::PUBLIC)
-        .expect("export public");
+    let exported = key.export(rnp::ExportFlags::PUBLIC).expect("export public");
     let json = dump_packets_bytes_to_json(&exported, JsonDumpFlags::default())
         .expect("dump_packets_to_json");
     // The C side returns a JSON array of packet objects. Confirm it parses.
@@ -99,9 +95,7 @@ mod serde_lite {
 
     impl<'a> Parser<'a> {
         fn ws(&mut self) {
-            while self.pos < self.bytes.len()
-                && (self.bytes[self.pos] as char).is_whitespace()
-            {
+            while self.pos < self.bytes.len() && (self.bytes[self.pos] as char).is_whitespace() {
                 self.pos += 1;
             }
         }
@@ -222,7 +216,13 @@ mod serde_lite {
         fn number(&mut self) -> Result<Value, String> {
             let start = self.pos;
             while let Some(&c) = self.bytes.get(self.pos) {
-                if c == b'-' || c == b'+' || c == b'.' || c == b'e' || c == b'E' || c.is_ascii_digit() {
+                if c == b'-'
+                    || c == b'+'
+                    || c == b'.'
+                    || c == b'e'
+                    || c == b'E'
+                    || c.is_ascii_digit()
+                {
                     self.pos += 1;
                 } else {
                     break;

@@ -1,10 +1,10 @@
 //! ASCII-armor and dearmor wrappers, plus content-type sniffing.
 //!
-//! These wrap [`rnp_enarmor`], [`rnp_dearmor`], and [`rnp_guess_contents`].
-//! For streaming armor wrapping of an existing [`Output`], see
-//! [`crate::Output::to_armor`].
+//! These wrap the upstream C functions `rnp_enarmor`, `rnp_dearmor`,
+//! and `rnp_guess_contents`. For streaming armor wrapping of an
+//! existing [`Output`], see [`crate::Output::to_armor`].
 
-use crate::error::{check, Result};
+use crate::error::{Result, check};
 use crate::ffi;
 use crate::ffi_safe::call_for_optional_string;
 use crate::ops::{ArmorType, Input, Output};
@@ -56,9 +56,8 @@ impl ContentType {
 /// Peek at `input` and report its likely content type. Does not consume the
 /// stream — the input is still usable for further calls.
 pub fn guess_contents(input: &Input) -> Result<ContentType> {
-    let s = call_for_optional_string(|out| unsafe {
-        ffi::rnp_guess_contents(input.as_ptr(), out)
-    })?;
+    let s =
+        call_for_optional_string(|out| unsafe { ffi::rnp_guess_contents(input.as_ptr(), out) })?;
     Ok(ContentType::from_cstr(s.as_deref().unwrap_or("")))
 }
 

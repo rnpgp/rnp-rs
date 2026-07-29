@@ -2,7 +2,7 @@
 
 use crate::algorithm::{Algorithm, Curve, Hash, KeyUsage};
 use crate::context::Context;
-use crate::error::{self, check, Result};
+use crate::error::{self, Result, check};
 use crate::ffi;
 use crate::key::Key;
 use std::ffi::CString;

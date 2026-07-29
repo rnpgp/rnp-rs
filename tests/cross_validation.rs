@@ -37,10 +37,7 @@ fn rnp_exports_sequoia_parses_pubkey() {
         .expect("cert has a UID")
         .userid()
         .to_string();
-    assert!(
-        userid.contains("cv@example.com"),
-        "UID mismatch: {userid}"
-    );
+    assert!(userid.contains("cv@example.com"), "UID mismatch: {userid}");
     // Public-key exports don't include secret-key parts.
     assert!(
         !cert.is_tsk(),
@@ -93,8 +90,8 @@ fn rnp_signed_message_sequoia_parses() {
     let signed = rnp::sign(&ctx, message, &key).expect("rnp sign");
 
     // Sequoia can parse the inline-signed message structure.
-    let _ = openpgp::Message::from_bytes(&signed)
-        .expect("sequoia should parse rnp's signed message");
+    let _ =
+        openpgp::Message::from_bytes(&signed).expect("sequoia should parse rnp's signed message");
 }
 
 #[test]

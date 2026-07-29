@@ -1,9 +1,9 @@
 //! [`CertificationBuilder`] — bind a UID to a key.
 
-use crate::error::{self, check, Result};
+use crate::Uid;
+use crate::error::{self, Result, check};
 use crate::ffi;
 use crate::key::Key;
-use crate::Uid;
 use std::ffi::CString;
 use std::marker::PhantomData;
 use std::ptr;
