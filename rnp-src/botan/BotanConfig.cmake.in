@@ -21,3 +21,12 @@ set_target_properties(Botan::Botan PROPERTIES
     IMPORTED_LOCATION "@BOTAN_PREFIX@/lib/libbotan-3.a"
     INTERFACE_INCLUDE_DIRECTORIES "@BOTAN_PREFIX@/include/botan-3"
 )
+
+# Botan's static lib has platform-specific transitive dependencies.
+# Without declaring them here, the consumer (librnp) gets unresolved
+# symbols when linking against libbotan-3.a.
+if(WIN32)
+    set_target_properties(Botan::Botan PROPERTIES
+        INTERFACE_LINK_LIBRARIES "ws2_32;crypt32"
+    )
+endif()

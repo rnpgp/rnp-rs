@@ -544,24 +544,6 @@ fn build_librnp(src_dir: &Path, prefix: &Path, deps: &Deps) {
         cmd.arg("-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0");
     }
 
-    // Windows + MSYS2: link against ws2_32 (Winsock) and crypt32 (CryptoAPI).
-    // librnp's static Botan references getaddrinfo/freeaddrinfo (via the
-    // socket_init path) and the Cert* APIs in crypt32.lib. Set LDFLAGS
-    // environment variable — mingw's g++ wrapper reads it for every link
-    // step, ensuring ws2_32 is always in the search path. CMAKE_*_LINKER_FLAGS
-    // proved unreliable here (ninja generator may not propagate them).
-    if cfg!(target_os = "windows") {
-        unsafe {
-            let existing = env::var("LDFLAGS").unwrap_or_default();
-            let new_flags = if existing.is_empty() {
-                "-lws2_32 -lcrypt32".to_string()
-            } else {
-                format!("{existing} -lws2_32 -lcrypt32")
-            };
-            env::set_var("LDFLAGS", new_flags);
-        }
-    }
-
     run(&mut cmd, "librnp cmake");
     run(
         Command::new("cmake").args([
