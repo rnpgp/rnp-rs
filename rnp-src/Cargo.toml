@@ -25,3 +25,8 @@ crypto-refresh = []
 [build-dependencies]
 botan-src = "0.31200"
 cmake = "0.1"
+# Pure-Rust HTTP + tarball extraction so we don't depend on the system
+# having curl + tar in PATH (Windows runners don't always have curl).
+flate2 = "1"
+tar = "0.4"
+ureq = { version = "3", default-features = false }

@@ -556,55 +556,65 @@ fn nproc() -> String {
 }
 
 fn download_and_extract(url: &str, dest: &Path) {
-    let tarball = dest.join("download.tar.gz");
-    // Retry up to 5 times with 2s backoff. CI runners occasionally see
-    // transient 503s / connection resets from sourceware, github, etc.
+    // Pure-Rust download path: no curl, no tar in PATH required. This
+    // matters for Windows + MSYS2 UCRT64 (MSYS2 has them, but other
+    // Windows toolchains may not) and minimal Linux images.
+    //
+    // Retry up to 5 times with 2s backoff to absorb transient 503s from
+    // upstream mirrors (sourceware, github-releases, s3).
     let mut last_err: Option<String> = None;
+    let mut body: Option<Vec<u8>> = None;
     for attempt in 1..=5 {
-        let output = Command::new("curl")
-            .args(["-sL", "--fail", "--retry", "3", "--retry-delay", "2", "-o"])
-            .arg(&tarball)
-            .arg(url)
-            .output()
-            .unwrap_or_else(|e| panic!("rnp-src: failed to spawn curl: {e}"));
-        if output.status.success() && tarball.exists() {
-            last_err = None;
-            break;
+        match ureq::get(url)
+            .timeout(std::time::Duration::from_secs(120))
+            .call()
+        {
+            Ok(resp) => {
+                use std::io::Read;
+                let mut buf = Vec::with_capacity(2 * 1024 * 1024);
+                match resp
+                    .into_reader()
+                    .take(512 * 1024 * 1024)
+                    .read_to_end(&mut buf)
+                {
+                    Ok(_) => {
+                        body = Some(buf);
+                        last_err = None;
+                        break;
+                    }
+                    Err(e) => {
+                        last_err = Some(format!("attempt {attempt}: read body: {e}"));
+                    }
+                }
+            }
+            Err(e) => {
+                last_err = Some(format!("attempt {attempt}: ureq: {e}"));
+            }
         }
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        last_err = Some(format!(
-            "attempt {attempt}: curl exited {:?}: {stderr}",
-            output.status
-        ));
         eprintln!("rnp-src: download {url} failed (attempt {attempt}); retrying in 2s");
         std::thread::sleep(std::time::Duration::from_secs(2));
     }
-    if let Some(err) = last_err {
-        panic!("rnp-src: failed to download {url} after 5 attempts: {err}");
-    }
-    // Verify the tarball is actually gzipped before invoking tar, so we
-    // get a useful error message instead of `gzip: stdin: not in gzip
-    // format` when an upstream mirror serves an HTML error page.
-    let header = std::fs::read(&tarball).unwrap_or_default();
-    if header.len() < 2 || header[0] != 0x1f || header[1] != 0x8b {
-        let snippet = String::from_utf8_lossy(&header[..header.len().min(200)]);
+    let body = body.unwrap_or_else(|| {
+        panic!(
+            "rnp-src: failed to download {url} after 5 attempts: {}",
+            last_err.unwrap_or_else(|| "unknown error".to_string())
+        )
+    });
+
+    // Verify gzip magic bytes before attempting to decompress.
+    if body.len() < 2 || body[0] != 0x1f || body[1] != 0x8b {
+        let snippet = String::from_utf8_lossy(&body[..body.len().min(200)]);
         panic!(
             "rnp-src: {url} did not return a gzip tarball (first {} bytes): {snippet}",
-            header.len()
+            body.len()
         );
     }
-    let status = Command::new("tar")
-        .args(["xzf"])
-        .arg(&tarball)
-        .arg("-C")
-        .arg(dest)
-        .status()
-        .unwrap_or_else(|e| panic!("rnp-src: failed to run tar: {e}"));
-    assert!(
-        status.success(),
-        "rnp-src: failed to extract tarball from {url}"
-    );
-    let _ = fs::remove_file(&tarball);
+
+    let decoder = flate2::read::GzDecoder::new(std::io::Cursor::new(body));
+    let mut archive = tar::Archive::new(decoder);
+    archive
+        .unpack(dest)
+        .unwrap_or_else(|e| panic!("rnp-src: failed to extract tarball from {url}: {e}"));
 }
 
 /// Capture stderr/stdout into the panic message so future failures
