@@ -565,10 +565,7 @@ fn download_and_extract(url: &str, dest: &Path) {
     let mut last_err: Option<String> = None;
     let mut body: Option<Vec<u8>> = None;
     for attempt in 1..=5 {
-        match ureq::get(url)
-            .timeout(std::time::Duration::from_secs(120))
-            .call()
-        {
+        match ureq::get(url).call() {
             Ok(resp) => {
                 use std::io::Read;
                 let mut buf = Vec::with_capacity(2 * 1024 * 1024);
