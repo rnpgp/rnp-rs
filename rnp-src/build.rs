@@ -562,15 +562,7 @@ fn download_and_extract(url: &str, dest: &Path) {
     let mut last_err: Option<String> = None;
     for attempt in 1..=5 {
         let output = Command::new("curl")
-            .args([
-                "-sL",
-                "--fail",
-                "--retry",
-                "3",
-                "--retry-delay",
-                "2",
-                "-o",
-            ])
+            .args(["-sL", "--fail", "--retry", "3", "--retry-delay", "2", "-o"])
             .arg(&tarball)
             .arg(url)
             .output()
@@ -580,7 +572,10 @@ fn download_and_extract(url: &str, dest: &Path) {
             break;
         }
         let stderr = String::from_utf8_lossy(&output.stderr);
-        last_err = Some(format!("attempt {attempt}: curl exited {:?}: {stderr}", output.status));
+        last_err = Some(format!(
+            "attempt {attempt}: curl exited {:?}: {stderr}",
+            output.status
+        ));
         eprintln!("rnp-src: download {url} failed (attempt {attempt}); retrying in 2s");
         std::thread::sleep(std::time::Duration::from_secs(2));
     }
