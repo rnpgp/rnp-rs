@@ -58,11 +58,11 @@ jobs:
           components: clippy, rustfmt
 
       - name: Install librnp (macOS)
-        if: matrix.os == 'macos-14'
+        if: startsWith(matrix.os, 'macos')
         run: brew install rnp
 
       - name: Install librnp (Linux)
-        if: matrix.os == 'ubuntu-22.04'
+        if: startsWith(matrix.os, 'ubuntu')
         uses: ./.github/actions/install-librnp
 
       - uses: actions/cache@v6
@@ -130,11 +130,11 @@ jobs:
       # still need cmake + a C/C++ toolchain. Botan is built from source
       # by botan-src transitively, so we do NOT install libbotan-* here.
       - name: Install build deps (macOS)
-        if: matrix.os == 'macos-14'
+        if: startsWith(matrix.os, 'macos')
         run: brew install json-c zlib bzip2 cmake
 
       - name: Install build deps (Linux)
-        if: matrix.os == 'ubuntu-22.04'
+        if: startsWith(matrix.os, 'ubuntu')
         run: |
           sudo apt-get update
           sudo apt-get install -y libjson-c-dev zlib1g-dev libbz2-dev cmake \
