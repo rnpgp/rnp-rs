@@ -544,6 +544,15 @@ fn build_librnp(src_dir: &Path, prefix: &Path, deps: &Deps) {
         cmd.arg("-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0");
     }
 
+    // Windows + MSYS2: link against ws2_32 (Winsock) and crypt32 (CryptoAPI)
+    // — librnp's static Botan references getaddrinfo/freeaddrinfo and the
+    // Windows cert store functions via crypt32.lib's Cert* APIs. Even with
+    // certstor_system_windows disabled, the Winsock symbols (used by
+    // Botan's HTTP utility code) still need explicit linkage.
+    if cfg!(target_os = "windows") {
+        cmd.args(["-DCMAKE_EXE_LINKER_FLAGS=-lws2_32 -lcrypt32"]);
+    }
+
     run(&mut cmd, "librnp cmake");
     run(
         Command::new("cmake").args([
