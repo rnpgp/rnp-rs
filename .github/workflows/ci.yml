@@ -40,7 +40,10 @@ jobs:
       - uses: crate-ci/typos@v1.48.0
 
   # ---------------------------------------------------------------------
-  # Default-feature build against system-installed librnp.
+  # Lint + test with vendored build (rnp-src compiles librnp from source).
+  # The "default" name is kept for CI history continuity; all cargo
+  # commands now use --features vendored so we have ONE build path —
+  # rnp-src (with botan-src) owns all version pinning.
   # ---------------------------------------------------------------------
   system:
     name: default (${{ matrix.os }})
@@ -57,8 +60,15 @@ jobs:
         with:
           components: clippy, rustfmt
 
-      - name: Install librnp
-        uses: ./.github/actions/install-librnp
+      - name: Install build deps (Linux)
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential python3 curl
+
+      - name: Install build deps (macOS)
+        if: startsWith(matrix.os, 'macos')
+        run: brew install cmake python3
 
       - uses: actions/cache@v6
         with:
@@ -66,21 +76,21 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: system-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
+          key: system-${{ matrix.os }}-${{ hashFiles('Cargo.lock', 'rnp-src/build.rs') }}
 
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
 
       - name: cargo clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --all-targets --features vendored -- -D warnings
 
       - name: cargo test
-        run: cargo test --no-fail-fast
+        run: cargo test --features vendored --no-fail-fast
 
       - name: cargo doc
         env:
           RUSTDOCFLAGS: -D warnings
-        run: cargo doc --no-deps
+        run: cargo doc --no-deps --features vendored
 
   # ---------------------------------------------------------------------
   # MSRV check: ensure the crate compiles on the declared minimum
@@ -95,14 +105,16 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@1.88.0
 
-      - name: Install librnp
-        uses: ./.github/actions/install-librnp
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential python3 curl
 
       - name: cargo build (MSRV)
-        run: cargo build --all-targets
+        run: cargo build --all-targets --features vendored
 
       - name: cargo test (MSRV)
-        run: cargo test --no-fail-fast
+        run: cargo test --features vendored --no-fail-fast
 
   # ---------------------------------------------------------------------
   # Vendored build — rnp-src crate compiles librnp + Botan + json-c +
@@ -205,8 +217,10 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Install librnp
-        uses: ./.github/actions/install-librnp
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential python3 curl
 
       - name: Install cargo-semver-checks
         run: cargo install cargo-semver-checks --locked

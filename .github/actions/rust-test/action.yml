@@ -1,15 +1,8 @@
-# Reusable composite action: install toolchain → build librnp →
-# cargo build/test. Used by bench, beta, nightly, miri.
+# Reusable composite action: install build deps → cargo build/test with
+# --features vendored. Used by bench, beta, nightly, miri.
 #
-# Caller MUST run `actions/checkout@v7` before this action — GitHub
-# needs to find .github/actions/install-librnp on disk before it can
-# resolve the local-action reference below.
-#
-# Why a composite action, not a reusable workflow:
-# composite actions compose more naturally with per-job setup and can
-# be called multiple times in the same job. Reusable workflows are
-# heavier and require separate triggers.
-name: Run Rust build/test against a locally-built librnp
+# Caller MUST run `actions/checkout@v7` before this action.
+name: Run Rust build/test with vendored librnp
 
 inputs:
   toolchain:
@@ -30,19 +23,17 @@ inputs:
   env-vars:
     description: |
       Multiline `KEY=value` pairs written to GITHUB_ENV before the cargo
-      command runs. Useful for things like MIRIFLAGS that the test
-      process must see.
+      command runs.
     required: false
     default: ""
   pre-setup:
-    description: Multiline shell script run after install-librnp, before cargo.
+    description: Multiline shell script run after build deps install, before cargo.
     required: false
     default: ""
   post-commands:
     description: |
       Multiline shell script run after the main cargo command. Always
-      runs with continue-on-error so it can be a smoke-test / sanity
-      check that doesn't fail the job.
+      runs with continue-on-error.
     required: false
     default: ""
   allow-failure:
@@ -58,8 +49,17 @@ runs:
         toolchain: ${{ inputs.toolchain }}
         components: ${{ inputs.components }}
 
-    - name: Install librnp
-      uses: ./.github/actions/install-librnp
+    - name: Install build deps (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake build-essential python3 curl
+
+    - name: Install build deps (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: brew install cmake python3
 
     - uses: actions/cache@v6
       with:
@@ -67,7 +67,7 @@ runs:
           ~/.cargo/registry
           ~/.cargo/git
           target
-        key: rust-test-${{ inputs.toolchain }}-${{ hashFiles('Cargo.lock') }}
+        key: rust-test-${{ inputs.toolchain }}-${{ hashFiles('Cargo.lock', 'rnp-src/build.rs') }}
 
     - name: Pre-setup
       if: inputs.pre-setup != ''
@@ -86,7 +86,7 @@ runs:
     - name: cargo ${{ inputs.command }}
       shell: bash
       continue-on-error: ${{ inputs.allow-failure == 'true' }}
-      run: cargo ${{ inputs.command }} ${{ inputs.extra-args }} --no-fail-fast
+      run: cargo ${{ inputs.command }} --features vendored ${{ inputs.extra-args }} --no-fail-fast
 
     - name: Post-commands
       if: inputs.post-commands != '' && always()
