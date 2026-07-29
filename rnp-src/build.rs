@@ -393,10 +393,14 @@ fn prepare_librnp_head(src_dir: &Path) -> PathBuf {
 #[cfg(any(feature = "pqc", feature = "crypto-refresh"))]
 fn patch_librnp_botan_includes(rnp_src: &Path) {
     /// (Botan type prefix, header to include)
+    ///
+    /// Botan 3.11+ made several types opaque (PIMPL). The headers below
+    /// are correct for Botan 3.12; if a type moves between headers in a
+    /// future release, this table needs updating.
     const TYPE_HEADER_PAIRS: &[(&str, &str)] = &[
         ("Botan::EC_Group", "botan/ec_group.h"),
-        ("Botan::EC_Point", "botan/ec_point.h"),
-        ("Botan::EC_AffinePoint", "botan/ec_affinepoint.h"),
+        // EC_Point is declared inside ec_group.h, not its own header.
+        ("Botan::EC_AffinePoint", "botan/ec_apoint.h"),
         ("Botan::BigInt", "botan/bigint.h"),
         ("Botan::ECDH_PrivateKey", "botan/ecdh.h"),
         ("Botan::ECDSA_PrivateKey", "botan/ecdsa.h"),
