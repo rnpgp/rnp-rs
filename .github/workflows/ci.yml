@@ -9,9 +9,12 @@ on:
   pull_request:
   workflow_dispatch:
 
-# Cancel superseded runs (e.g. push-while-PR-open).
+# Cancel superseded runs of the SAME PR / branch. Note: the group key
+# intentionally does NOT include github.event_name, so a push to a
+# branch that has an open PR will cancel the in-flight pull_request
+# run (and vice versa) — they share the group key.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:

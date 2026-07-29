@@ -557,13 +557,47 @@ fn nproc() -> String {
 
 fn download_and_extract(url: &str, dest: &Path) {
     let tarball = dest.join("download.tar.gz");
-    let status = Command::new("curl")
-        .args(["-sL", "-o"])
-        .arg(&tarball)
-        .arg(url)
-        .status()
-        .unwrap_or_else(|e| panic!("rnp-src: failed to run curl: {e}"));
-    assert!(status.success(), "rnp-src: failed to download {url}");
+    // Retry up to 5 times with 2s backoff. CI runners occasionally see
+    // transient 503s / connection resets from sourceware, github, etc.
+    let mut last_err: Option<String> = None;
+    for attempt in 1..=5 {
+        let output = Command::new("curl")
+            .args([
+                "-sL",
+                "--fail",
+                "--retry",
+                "3",
+                "--retry-delay",
+                "2",
+                "-o",
+            ])
+            .arg(&tarball)
+            .arg(url)
+            .output()
+            .unwrap_or_else(|e| panic!("rnp-src: failed to spawn curl: {e}"));
+        if output.status.success() && tarball.exists() {
+            last_err = None;
+            break;
+        }
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        last_err = Some(format!("attempt {attempt}: curl exited {:?}: {stderr}", output.status));
+        eprintln!("rnp-src: download {url} failed (attempt {attempt}); retrying in 2s");
+        std::thread::sleep(std::time::Duration::from_secs(2));
+    }
+    if let Some(err) = last_err {
+        panic!("rnp-src: failed to download {url} after 5 attempts: {err}");
+    }
+    // Verify the tarball is actually gzipped before invoking tar, so we
+    // get a useful error message instead of `gzip: stdin: not in gzip
+    // format` when an upstream mirror serves an HTML error page.
+    let header = std::fs::read(&tarball).unwrap_or_default();
+    if header.len() < 2 || header[0] != 0x1f || header[1] != 0x8b {
+        let snippet = String::from_utf8_lossy(&header[..header.len().min(200)]);
+        panic!(
+            "rnp-src: {url} did not return a gzip tarball (first {} bytes): {snippet}",
+            header.len()
+        );
+    }
     let status = Command::new("tar")
         .args(["xzf"])
         .arg(&tarball)
