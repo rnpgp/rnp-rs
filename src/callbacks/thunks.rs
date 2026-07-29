@@ -47,7 +47,7 @@ pub(crate) unsafe extern "C" fn password_thunk(
         if bytes.len() + 1 > buf_len {
             return false;
         }
-        std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf, bytes.len());
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf.cast::<u8>(), bytes.len());
         *buf.add(bytes.len()) = 0;
         true
     }
