@@ -1,5 +1,5 @@
 name: Install librnp 0.18.1
-description: Build Botan 3.6 + librnp 0.18.1 from source and export paths.
+description: Build Botan 3.12 + librnp 0.18.1 from source and export paths.
 
 inputs:
   botan-modules:
@@ -16,29 +16,28 @@ runs:
       run: |
         sudo apt-get update
         sudo apt-get install -y libjson-c-dev zlib1g-dev libbz2-dev \
-          cmake build-essential python3 curl
+          cmake build-essential python3 curl xz-utils
 
     - name: Install build deps (macOS)
       if: runner.os == 'macOS'
       shell: bash
       run: brew install cmake python3
 
-    - name: Build Botan 3.6
+    - name: Build Botan 3.12
       shell: bash
       run: |
         BUILD_PREFIX="$RUNNER_TEMP/rnp-deps"
         BOTAN_PREFIX="$BUILD_PREFIX/botan"
         mkdir -p "$BUILD_PREFIX"
-        # Detect compiler: clang on macOS, gcc elsewhere.
         if [ "$(uname)" = "Darwin" ]; then
           CC=clang; CXX=clang++
         else
           CC=gcc; CXX=g++
         fi
         cd "$RUNNER_TEMP"
-        curl -sLO https://botan.randombit.net/releases/Botan-3.6.0.tar.xz
-        tar xf Botan-3.6.0.tar.xz
-        cd Botan-3.6.0
+        curl -sLO https://botan.randombit.net/releases/Botan-3.12.0.tar.xz
+        tar xf Botan-3.12.0.tar.xz
+        cd Botan-3.12.0
         if [ -n "${{ inputs.botan-modules }}" ]; then
           python3 configure.py \
             --prefix="$BOTAN_PREFIX" \
