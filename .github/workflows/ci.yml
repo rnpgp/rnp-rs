@@ -59,7 +59,19 @@ jobs:
 
       - name: Install librnp (macOS)
         if: startsWith(matrix.os, 'macos')
-        run: brew install rnp
+        run: |
+          brew install rnp
+          # Export paths explicitly so rnp-rs's build.rs finds them via
+          # the RNP_INCLUDE_DIR / RNP_LIB_DIR env vars (locate_explicit).
+          # pkg-config may not find rnp.pc if it's not in the default
+          # search path on some runner images.
+          if [ -d /opt/homebrew/include/rnp ]; then
+            echo "RNP_INCLUDE_DIR=/opt/homebrew/include" >> $GITHUB_ENV
+            echo "RNP_LIB_DIR=/opt/homebrew/lib" >> $GITHUB_ENV
+          elif [ -d /usr/local/include/rnp ]; then
+            echo "RNP_INCLUDE_DIR=/usr/local/include" >> $GITHUB_ENV
+            echo "RNP_LIB_DIR=/usr/local/lib" >> $GITHUB_ENV
+          fi
 
       - name: Install librnp (Linux)
         if: startsWith(matrix.os, 'ubuntu')
