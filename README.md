@@ -7,6 +7,92 @@ RNP is the C++ OpenPGP implementation that powers Mozilla Thunderbird.
 This crate provides a thin, safe Rust wrapper over its public C FFI
 (declared in `include/rnp/rnp.h`).
 
+## Getting started
+
+### 1. Install build prerequisites
+
+The only Rust toolchain requirement is **Rust ≥ 1.88** (`rustup install stable`).
+Beyond that, the prerequisites depend on whether you use the system `librnp` or
+compile from source:
+
+#### Option A — vendored (recommended for new projects)
+
+Compiles librnp + Botan + json-c + zlib + bzip2 from source. No system crypto
+libraries needed.
+
+| Platform | Prerequisites |
+|---|---|
+| **Linux** | `sudo apt install build-essential cmake python3` (Debian/Ubuntu) or `sudo dnf install gcc gcc-c++ cmake python3` (Fedora) |
+| **macOS** | `xcode-select --install && brew install cmake python3` |
+| **Windows** | Install [MSYS2](https://www.msys2.org/), then in an **UCRT64** shell: `pacman -S mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-make mingw-w64-ucrt-x86_64-python3 make` |
+
+First build takes ~10 min (Botan dominates); cached in `OUT_DIR` after that.
+
+#### Option B — system librnp (smaller builds, faster iteration)
+
+| Platform | Install command |
+|---|---|
+| **macOS** | `brew install rnp` |
+| **Fedora** | `sudo dnf install librnp-devel` |
+| **Debian/Ubuntu** | `sudo apt install librnp-dev` (if packaged) |
+| **Custom build** | Set `RNP_INCLUDE_DIR` + `RNP_LIB_DIR` to point at your own librnp build |
+
+### 2. Add the dependency
+
+```toml
+# Cargo.toml
+
+# Option A — vendored (self-contained, no system libs):
+[dependencies]
+rnp = { version = "0.1", features = ["vendored"] }
+
+# Option A + PQC (post-quantum algorithms):
+rnp = { version = "0.1", features = ["vendored", "pqc", "crypto-refresh"] }
+
+# Option B — system librnp (requires `brew install rnp` etc.):
+[dependencies]
+rnp = "0.1"
+```
+
+### 3. Build and test
+
+```sh
+cargo build                    # compiles Botan + librnp on first run (vendored)
+cargo test                     # runs the integration test suite
+```
+
+On Windows, run from an **MSYS2 UCRT64** shell so cargo finds the mingw toolchain.
+
+### 4. Write your first program
+
+```rust
+use rnp::{Algorithm, Context, Hash, KeyBuilder, KeyUsage};
+
+fn main() -> rnp::Result<()> {
+    let ctx = Context::new()?;
+
+    // Generate a signing key
+    let key = KeyBuilder::new(Algorithm::Rsa)
+        .bits(2048)
+        .userid("alice <alice@example.com>")
+        .hash(Hash::Sha256)
+        .add_usage(KeyUsage::Sign)
+        .add_usage(KeyUsage::Certify)
+        .build(&ctx)?;
+
+    // Sign and verify a message
+    let message = b"hello, world";
+    let signed = rnp::sign(&ctx, message, &key)?;
+    let result = rnp::verify(&ctx, &signed)?;
+    assert!(result.any_valid()?);
+
+    println!("Signature verified!");
+    Ok(())
+}
+```
+
+See `examples/` for encrypt/decrypt, keygen, and multi-signer demos.
+
 ## Status
 
 The crate wraps ~250 of librnp's ~309 public functions across all major
@@ -20,10 +106,10 @@ support is feature-gated. MSRV is **Rust 1.88** (let-chains in
 
 | Feature          | Default | Description                                                                                                                                                          |
 |------------------|---------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `vendored`       | off     | Statically link the bundled `librnp.a` + `libsexpp.a` + `libjson-c.a` + `libbotan-3.a` + `libz.a` + `libbz2.a` from `prebuilt/<target>/`. Fully self-contained — no system crypto deps. |
-| `vendored-minimal` | off   | Implies `vendored`. Selects the minimal Botan variant — only RFC 9580 essentials (RSA/ECDSA/ECDH/Ed25519/X25519, AES, SHA-1/2/3, ChaCha20-Poly1305, GCM, OCB, Argon2). ~30-40% smaller than full `vendored`. Incompatible with `pqc`. |
-| `pqc`            | off     | Pass `-DRNP_EXPERIMENTAL_PQC` to bindgen so PQC algorithm constants and `Encryptor::prefer_pqc_enc_subkey` are exposed. Requires librnp built with `ENABLE_PQC=ON`. |
-| `crypto-refresh` | off     | Pass `-DRNP_EXPERIMENTAL_CRYPTO_REFRESH` to bindgen so v6 keys, crypto-refresh algorithm names, and v6 PKESK/SKESK are exposed.                                       |
+| `vendored`       | off     | Compile librnp + Botan + json-c + zlib + bzip2 from source via the `rnp-src` crate and statically link. Fully self-contained — no system libraries required. First build ~10 min (Botan); cached in `OUT_DIR` after that. |
+| `vendored-minimal` | off   | Implies `vendored`. (Future: select a minimal Botan module set for smaller binaries.) |
+| `pqc`            | off     | Build with `ENABLE_PQC=ON` and expose PQC algorithm constants (ML-KEM, ML-DSA, SLH-DSA) + `Encryptor::prefer_pqc_enc_subkey`. Requires `vendored` (system librnp rarely has PQC). |
+| `crypto-refresh` | off     | Expose v6 keys, crypto-refresh algorithm names, and v6 PKESK/SKESK. Requires `vendored`. |
 | `logging`        | off     | Gate `Context::set_log_fd` / `set_log_file` for directing librnp's diagnostic output.                                                                                |
 
 ## Quick start
@@ -431,35 +517,33 @@ RNP_LIB_DIR=/path/to/rnp/install/lib \
 cargo build
 ```
 
-### Vendored (no system librnp)
+### Vendored (compile everything from source)
 
-```sh
-cargo build --features vendored              # full Botan, all algorithms
-cargo build --features vendored-minimal      # minimal Botan, RFC 9580 essentials only
+```toml
+# Default: librnp 0.18.1 + Botan 3.12 + all deps, statically linked
+[dependencies]
+rnp = { version = "0.1", features = ["vendored"] }
+
+# PQC + crypto-refresh: librnp HEAD + Botan with PQC modules
+rnp = { version = "0.1", features = ["vendored", "pqc", "crypto-refresh"] }
 ```
 
-`build.rs` selects `prebuilt/<target>/` (full) or `prebuilt/<target>-minimal/`
-(minimal) matching your target triple and statically links `librnp.a` +
-`libsexpp.a` + `libjson-c.a` + `libbotan-3.a` + `libz.a` + `libbz2.a`. Both
-variants are fully self-contained — no system crypto dependencies required.
+No system librnp, Botan, json-c, zlib, or bzip2 required — the `rnp-src`
+crate downloads and compiles them all. Source downloads are pure Rust
+(ureq + flate2 + tar), so `curl` and `tar` are not needed on the host.
 
-**Which variant to pick?**
+Build requirements: **C/C++ compiler**, **cmake**, **python3** (for
+Botan's `configure.py`). On Windows, use **MSYS2 UCRT64** (`mingw-w64-ucrt-x86_64-gcc`,
+`cmake`, `make`, `python3`).
 
-- **`vendored`** (full): ~10-15 MB crate. Every algorithm Botan ships,
-  including PQC (`ML-KEM`, `ML-DSA`, `SLH-DSA`), Chinese crypto (`SM2/3/4`),
-  and legacy symmetric ciphers (`Twofish`, `Blowfish`, `CAST5`, `Camellia`,
-  `IDEA`, `3DES`). Use this when you need to interop with arbitrary
-  third-party OpenPGP material.
-- **`vendored-minimal`**: ~5-7 MB crate. Only the algorithms required for
-  modern RFC 9580 OpenPGP — RSA, ECDSA, ECDH, Ed25519, X25519, AES,
-  SHA-1/2/3, ChaCha20-Poly1305, GCM, OCB, Argon2, HMAC/HKDF/PBKDF2. Use
-  this when you control both signing and verification (embedded verifier,
-  plugin signature check, closed system). Incompatible with the `pqc`
-  feature — `cargo` will fail the build with a clear error if both are on.
+| Feature combo | librnp | Botan | When to use |
+|---|---|---|---|
+| `vendored` | 0.18.1 (stable tarball) | 3.12.0 (full) | Default — all RFC 9580 algorithms |
+| `vendored` + `pqc` | HEAD (git clone) | 3.12.0 (PQC modules enabled) | ML-KEM / ML-DSA / SLH-DSA signing + encryption |
+| `vendored` + `crypto-refresh` | HEAD (git clone) | 3.12.0 (full) | v6 keys, crypto-refresh algorithm names |
 
-Pre-built binaries are produced by `.github/workflows/prebuild.yml` for
-x86_64/aarch64 Linux and macOS (native runners), in both `full` and
-`minimal` variants.
+PQC/crypto-refresh use librnp HEAD because 0.18.1's PQC code paths are
+incompatible with Botan 3.12's opaque EC types.
 
 ## Architecture
 

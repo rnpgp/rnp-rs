@@ -14,9 +14,12 @@ crate, `rnp-src`'s build script downloads and compiles:
 | **json-c** | 0.17 | JSON parsing (librnp dependency) |
 | **zlib** | 1.3.1 | Compression |
 | **bzip2** | 1.0.8 | Compression (with `bz_internal_error` shim) |
-| **librnp** | 0.18.1 | OpenPGP implementation (the thing we actually wrap) |
+| **librnp** | 0.18.1 (or HEAD — see below) | OpenPGP implementation (the thing we actually wrap) |
 
 All five are statically linked into the final Rust binary. No system libraries required.
+
+Source tarballs are downloaded at build time via pure-Rust HTTP + decompression
+(ureq + flate2 + tar), so `curl` and `tar` are **not** required on the host.
 
 ## Usage
 
@@ -35,6 +38,10 @@ rnp = { version = "0.1", features = ["vendored"] }
 | `pqc` | Builds librnp with `ENABLE_PQC=ON` and Botan with PQC modules (ML-KEM, ML-DSA, SLH-DSA). Clones librnp HEAD instead of 0.18.1 (PQC code paths in 0.18.1 are incompatible with Botan 3.12's opaque EC types). |
 | `crypto-refresh` | Builds librnp with `ENABLE_CRYPTO_REFRESH=ON`. Same HEAD-vs-0.18.1 reasoning as `pqc`. |
 
+When **neither** feature is on, rnp-src uses the librnp **0.18.1** release
+tarball. When **either** is on, rnp-src clones librnp **HEAD** (pinned to
+`main`) and patches it for Botan 3.12 compatibility.
+
 ## Platform support
 
 | Platform | Status | Toolchain |
@@ -47,10 +54,28 @@ rnp = { version = "0.1", features = ["vendored"] }
 
 ## Build requirements
 
-- C/C++ compiler (gcc, clang, or mingw-w64 gcc)
-- `cmake` ≥ 3.5
-- `python3` (for Botan's `configure.py`)
-- First build takes ~5-10 min (Botan dominates); cached in `OUT_DIR` after that
+- **C/C++ compiler**: gcc/g++ (Linux), clang/clang++ (macOS), or mingw-w64-ucrt-x86_64-gcc/g++ (Windows MSYS2 UCRT64)
+- **cmake** >= 3.5
+- **python3** (for Botan's `configure.py`)
+- **make** (for bzip2 and Botan; not needed on platforms with Ninja-only cmake)
+
+No `curl`, `tar`, or `bsdtar` needed — source downloads are pure Rust
+(ureq + flate2 + tar). `git` is needed only when the `pqc` or
+`crypto-refresh` feature is on (librnp HEAD is cloned via git).
+
+First build takes ~5-10 min (Botan dominates); cached in `OUT_DIR` after that.
+
+### Windows setup (MSYS2 UCRT64)
+
+```sh
+# In an MSYS2 UCRT64 shell:
+pacman -S --needed \
+  mingw-w64-ucrt-x86_64-gcc \
+  mingw-w64-ucrt-x86_64-cmake \
+  mingw-w64-ucrt-x86_64-make \
+  mingw-w64-ucrt-x86_64-python3 \
+  make
+```
 
 ## License
 
