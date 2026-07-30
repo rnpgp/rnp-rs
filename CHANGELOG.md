@@ -12,6 +12,14 @@ are the detailed audit trail for each feature area.
 
 ### Fixed
 
+- Add flate/ureq to typos allowlist (crate names, not typos) by @[object]
+
+### Other
+
+- Fix vendored setup guide and add step-by-step tutorial by @[object]
+
+### Fixed
+
 - Keep linking stdc++ alongside Windows system libs by @[object]
 - Link advapi32/ws2_32/crypt32 in vendored mode by @[object]
 
