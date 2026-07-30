@@ -40,6 +40,8 @@ snafu = "snafu"
 criteron = "criteron"
 proptest = "proptest"
 sequoia = "sequoia"
+flate = "flate"
+ureq = "ureq"
 
 # Documentation terms
 adoc = "adoc"
