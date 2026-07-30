@@ -348,6 +348,17 @@ fn emit_link_directives(loc: &LibrnpLocation) {
             println!("cargo:rustc-link-lib=static=bz2");
             if cfg!(target_os = "macos") {
                 println!("cargo:rustc-link-lib=dylib=c++");
+            } else if cfg!(target_os = "windows") {
+                // Windows system libs needed transitively by the vendored
+                // deps' static archives:
+                //   - advapi32: json-c's random_seed.c (CryptAcquireContext,
+                //     CryptGenRandom, CryptReleaseContext)
+                //   - ws2_32 / crypt32: Botan's Winsock + CryptoAPI usage
+                //     (ws2_32 is in mingw's default link set, but declaring
+                //     it explicitly is belt-and-suspenders)
+                println!("cargo:rustc-link-lib=dylib=advapi32");
+                println!("cargo:rustc-link-lib=dylib=ws2_32");
+                println!("cargo:rustc-link-lib=dylib=crypt32");
             } else {
                 println!("cargo:rustc-link-lib=dylib=stdc++");
             }
