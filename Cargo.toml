@@ -1,6 +1,6 @@
 [package]
 name = "rnp-rs"
-version = "0.1.10"
+version = "0.1.11"
 edition = "2024"
 rust-version = "1.88"
 authors = ["Ribose Inc. <open.source@ribose.com>"]
@@ -35,7 +35,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 snafu = "0.9"
-rnp-src = { version = "0.1", path = "rnp-src", optional = true }
+rnp-src = { version = "0.2", path = "rnp-src", optional = true }
 
 [build-dependencies]
 bindgen = "0.72"
@@ -44,7 +44,7 @@ pkg-config = "0.3"
 # `links::DEPS` registry and the `links::lib_dir_env_var` helper to stay
 # in sync with whatever deps rnp-src decides to build. The `vendored`
 # Cargo feature pulls this in at build time.
-rnp-src = { version = "0.1", path = "rnp-src", optional = true }
+rnp-src = { version = "0.2", path = "rnp-src", optional = true }
 
 [dev-dependencies]
 proptest = "1"
