@@ -526,6 +526,16 @@ fn build_librnp(src_dir: &Path, prefix: &Path, deps: &Deps) {
         cmd.arg("-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0");
     }
 
+    // Windows + MSYS2: Botan's static lib references Winsock (ws2_32) and
+    // CryptoAPI (crypt32) symbols. librnp's CMakeLists.txt uses its own
+    // FindBotan.cmake (module mode), so our BotanConfig.cmake's
+    // INTERFACE_LINK_LIBRARIES is never read. CMAKE_CXX_STANDARD_LIBRARIES
+    // is ALWAYS appended to every C++ link command by cmake regardless of
+    // generator or find_package mode — the bulletproof way to inject these.
+    if cfg!(target_os = "windows") {
+        cmd.arg("-DCMAKE_CXX_STANDARD_LIBRARIES=-lws2_32 -lcrypt32");
+    }
+
     run(&mut cmd, "librnp cmake");
     run(
         Command::new("cmake").args([
