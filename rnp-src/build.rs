@@ -261,7 +261,7 @@ fn cmake_dep_build(dep: &CmakeDep, src_root: &Path, prefix: &Path) {
 
     // Apply platform-specific library filename aliases (e.g., zlib's
     // libzlibstatic.a on MinGW → libz.a). See CmakeDep::installed_lib_aliases.
-    apply_lib_aliases(&dep.installed_lib_aliases, &prefix.join("lib"), dep.name);
+    apply_lib_aliases(dep.installed_lib_aliases, &prefix.join("lib"), dep.name);
 }
 
 /// For each `(actual, expected)` pair: if `actual` exists under `lib_dir`
