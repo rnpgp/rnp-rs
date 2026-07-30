@@ -258,6 +258,57 @@ fn cmake_dep_build(dep: &CmakeDep, src_root: &Path, prefix: &Path) {
         Command::new("cmake").args(["--install", build_dir.to_str().unwrap()]),
         &format!("{} install", dep.name),
     );
+
+    // Apply platform-specific library filename aliases (e.g., zlib's
+    // libzlibstatic.a on MinGW → libz.a). See CmakeDep::installed_lib_aliases.
+    apply_lib_aliases(&dep.installed_lib_aliases, &prefix.join("lib"), dep.name);
+}
+
+/// For each `(actual, expected)` pair: if `actual` exists under `lib_dir`
+/// and `expected` doesn't, copy `actual` → `expected`. Idempotent and
+/// silent on platforms where the source doesn't exist.
+///
+/// If after processing all aliases, any `expected` target is still missing,
+/// dumps the directory listing to stderr for diagnosis (cargo hides build
+/// script stderr on success, but on failure it appears in the error log).
+fn apply_lib_aliases(aliases: &[(&str, &str)], lib_dir: &Path, dep_name: &str) {
+    for (actual, expected) in aliases {
+        let actual_path = lib_dir.join(actual);
+        let expected_path = lib_dir.join(expected);
+        if !actual_path.exists() || expected_path.exists() {
+            continue;
+        }
+        fs::copy(&actual_path, &expected_path).unwrap_or_else(|e| {
+            panic!(
+                "rnp-src: {dep_name}: failed to alias {actual} → {expected} in {}: {e}",
+                lib_dir.display()
+            )
+        });
+        eprintln!("rnp-src: {dep_name}: aliased {actual} → {expected}");
+    }
+
+    // Verify all expected targets now exist; if not, list the lib dir for
+    // diagnosis so the exact platform-specific filename is visible.
+    let mut missing: Vec<&str> = aliases
+        .iter()
+        .filter(|(_, expected)| !lib_dir.join(expected).exists())
+        .map(|(_, expected)| *expected)
+        .collect();
+    missing.sort_unstable();
+    missing.dedup();
+    if missing.is_empty() {
+        return;
+    }
+    eprintln!(
+        "rnp-src: {dep_name}: WARNING — expected lib(s) {} still missing after aliasing; listing {}:",
+        missing.join(", "),
+        lib_dir.display()
+    );
+    if let Ok(entries) = fs::read_dir(lib_dir) {
+        for entry in entries.flatten() {
+            eprintln!("  {}", entry.file_name().to_string_lossy());
+        }
+    }
 }
 
 // ---------------------------------------------------------------------
