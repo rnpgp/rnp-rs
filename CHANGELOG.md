@@ -10,6 +10,11 @@ are the detailed audit trail for each feature area.
 
 ## [Unreleased]
 
+### Fixed
+
+- Keep linking stdc++ alongside Windows system libs by @[object]
+- Link advapi32/ws2_32/crypt32 in vendored mode by @[object]
+
 ### Other
 
 - Release v0.1.8 by @[object]
