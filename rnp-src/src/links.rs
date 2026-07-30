@@ -106,6 +106,15 @@ pub struct CmakeDep {
     pub extra_cmake_args: &'static [&'static str],
     /// cmake policy version floor; some old libs need <3.5.
     pub cmake_policy_minimum: Option<&'static str>,
+    /// Library filename aliases to ensure exist under `<prefix>/lib/`
+    /// after `cmake --install`. Each entry is `(actual, expected)`: if
+    /// `actual` exists and `expected` doesn't, copy `actual` → `expected`.
+    ///
+    /// Handles platform-specific output-name quirks where a dep's cmake
+    /// target name doesn't match what rustc's `-l` flag expects. Example:
+    /// zlib on MinGW produces `libzlibstatic.a`, but rnp-rs links with
+    /// `static=z` which searches for `libz.a`.
+    pub installed_lib_aliases: &'static [(&'static str, &'static str)],
 }
 
 impl CmakeDep {
@@ -129,6 +138,7 @@ pub const JSON_C: CmakeDep = CmakeDep {
     url_template: "https://s3.amazonaws.com/json-c_releases/releases/json-c-{version}.tar.gz",
     extra_cmake_args: &["-DBUILD_TESTING=OFF"],
     cmake_policy_minimum: Some("3.5"),
+    installed_lib_aliases: &[],
 };
 
 pub const ZLIB: CmakeDep = CmakeDep {
@@ -137,6 +147,12 @@ pub const ZLIB: CmakeDep = CmakeDep {
     url_template: "https://github.com/madler/zlib/releases/download/v{version}/zlib-{version}.tar.gz",
     extra_cmake_args: &[],
     cmake_policy_minimum: None,
+    // On MinGW (Windows + MSYS2 UCRT64), zlib's cmake produces libzlibstatic.a
+    // (target name `zlibstatic`) instead of libz.a. rnp-rs links with
+    // `static=z` which searches for libz.a — alias both possible MinGW
+    // outputs to the canonical Unix name. On Unix this is a no-op: the
+    // sources don't exist there (libz.a is produced directly).
+    installed_lib_aliases: &[("libzlib.a", "libz.a"), ("libzlibstatic.a", "libz.a")],
 };
 
 #[cfg(test)]
@@ -204,6 +220,7 @@ mod tests {
             url_template: "",
             extra_cmake_args: &[],
             cmake_policy_minimum: None,
+            installed_lib_aliases: &[],
         };
         let root = Path::new("/tmp/src");
         assert_eq!(dep.source_dir(root), PathBuf::from("/tmp/src/json-c-0.17"));
