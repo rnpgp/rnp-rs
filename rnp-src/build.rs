@@ -228,10 +228,10 @@ fn cross_toolchain_set() -> bool {
 }
 
 fn append_cross_passthrough(cmd: &mut Command) {
-    if let Ok(toolchain) = env::var("RNP_CMAKE_TOOLCHAIN") {
-        if !toolchain.trim().is_empty() {
-            cmd.arg(format!("-DCMAKE_TOOLCHAIN_FILE={toolchain}"));
-        }
+    if let Ok(toolchain) = env::var("RNP_CMAKE_TOOLCHAIN")
+        && !toolchain.trim().is_empty()
+    {
+        cmd.arg(format!("-DCMAKE_TOOLCHAIN_FILE={toolchain}"));
     }
     if let Ok(args) = env::var("RNP_CMAKE_ARGS") {
         cmd.args(args.split_whitespace());
