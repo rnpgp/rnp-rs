@@ -10,7 +10,8 @@
 //      hardcoded candidate paths on minimal images.
 
 use std::env;
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 #[cfg(feature = "vendored")]
 use rnp_src::links;
@@ -37,13 +38,31 @@ fn main() {
     println!("cargo:rerun-if-changed={}", rnp_header.display());
     println!("cargo:rerun-if-env-changed=RNP_INCLUDE_DIR");
     println!("cargo:rerun-if-env-changed=RNP_LIB_DIR");
-
-    let bindings = generate_bindings(&loc.include_dir);
+    println!("cargo:rerun-if-env-changed=RNP_BINDINGS_RUNTIME");
+    println!("cargo:rerun-if-env-changed=RNP_BINDINGS_PREGENERATED");
+    println!("cargo:rerun-if-env-changed=RNP_BINDINGS_EXPERIMENTAL");
+    println!("cargo:rerun-if-env-changed=RNP_BINDINGS_REGENERATE");
 
     let out_path = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"));
-    bindings
-        .write_to_file(out_path.join("bindings.rs"))
-        .expect("Couldn't write bindings");
+    let bindings_path = out_path.join("bindings.rs");
+    match bindings_source(&loc) {
+        BindingsSource::Pregenerated(src) => {
+            // Skip bindgen entirely — no libclang needed on the build host.
+            // This is what makes cross builds work in minimal containers
+            // where libclang can't even find its own stdbool.h.
+            eprintln!("rnp-rs: using pregenerated bindings: {}", src.display());
+            println!("cargo:rerun-if-changed={}", src.display());
+            fs::copy(&src, &bindings_path)
+                .unwrap_or_else(|e| panic!("Couldn't copy pregenerated bindings: {e}"));
+        }
+        BindingsSource::Runtime => {
+            let bindings = generate_bindings(&loc.include_dir);
+            bindings
+                .write_to_file(&bindings_path)
+                .expect("Couldn't write bindings");
+            maybe_regenerate_bindings(&bindings_path);
+        }
+    }
 
     emit_link_directives(&loc);
 }
@@ -271,12 +290,92 @@ fn locate_via_hardcoded_paths() -> LibrnpLocation {
 }
 
 // -----------------------------------------------------------------------
-// Bindings generation.
+// Bindings: pregenerated vs runtime bindgen.
+//
+// The crate ships a pregenerated bindings/bindings-<librnp-version>.rs so
+// cross builds don't need a working host-side libclang (minimal cross
+// containers routinely ship a libclang that can't even find stdbool.h).
+// The file is target-independent: rnp.h is all opaque handles + primitives,
+// and C types render as std::os::raw aliases (c_char etc.) that resolve
+// per-target at compile time. It is generated with the experimental PQC +
+// crypto-refresh defines so one file serves all feature combos — unused
+// symbols are absorbed by ffi's dead_code allow.
+//
+// Selection order:
+//   1. RNP_BINDINGS_RUNTIME=1      → always runtime bindgen
+//   2. RNP_BINDINGS_PREGENERATED=1  → always the shipped file (escape
+//      hatch for cross builds in Explicit/System mode)
+//   3. auto: vendored build against the exact librnp version the file was
+//      generated from (HEAD always falls back — its API surface drifts)
 // -----------------------------------------------------------------------
 
+/// librnp version the shipped pregenerated bindings were generated against.
+const PREGENERATED_LIBRNP_VERSION: &str = "0.18.1";
+
+fn pregenerated_bindings_path() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("bindings")
+        .join(format!("bindings-{PREGENERATED_LIBRNP_VERSION}.rs"))
+}
+
+fn env_flag(name: &str) -> bool {
+    env::var(name)
+        .map(|v| !v.is_empty() && v != "0")
+        .unwrap_or(false)
+}
+
+enum BindingsSource {
+    Pregenerated(PathBuf),
+    Runtime,
+}
+
+fn bindings_source(loc: &LibrnpLocation) -> BindingsSource {
+    if env_flag("RNP_BINDINGS_RUNTIME") {
+        return BindingsSource::Runtime;
+    }
+    let prebuilt = pregenerated_bindings_path();
+    if env_flag("RNP_BINDINGS_PREGENERATED") {
+        assert!(
+            prebuilt.exists(),
+            "RNP_BINDINGS_PREGENERATED=1 but {} does not exist",
+            prebuilt.display()
+        );
+        return BindingsSource::Pregenerated(prebuilt);
+    }
+    let version_matches = env::var("DEP_RNP_LIBRNP_VERSION").as_deref() == Ok(PREGENERATED_LIBRNP_VERSION);
+    if loc.link_mode == LinkMode::Vendored && version_matches && prebuilt.exists() {
+        return BindingsSource::Pregenerated(prebuilt);
+    }
+    BindingsSource::Runtime
+}
+
+/// Under RNP_BINDINGS_REGENERATE=1, copy the just-generated bindings back
+/// into bindings/ so they can be committed. Requires the vendored feature
+/// (that's how we know which librnp version the headers are from). Pair
+/// with RNP_BINDINGS_EXPERIMENTAL=1 to include the PQC/crypto-refresh
+/// surface in the shipped file.
+fn maybe_regenerate_bindings(out_bindings: &Path) {
+    if !env_flag("RNP_BINDINGS_REGENERATE") {
+        return;
+    }
+    let version = env::var("DEP_RNP_LIBRNP_VERSION")
+        .expect("RNP_BINDINGS_REGENERATE requires --features vendored to identify the librnp version");
+    let dest_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("bindings");
+    fs::create_dir_all(&dest_dir).expect("Couldn't create bindings/ directory");
+    let dest = dest_dir.join(format!("bindings-{version}.rs"));
+    let generated = fs::read_to_string(out_bindings).expect("Couldn't read generated bindings");
+    let banner = format!(
+        "// Generated by bindgen against librnp {version} headers, with\n\
+         // RNP_EXPERIMENTAL_PQC and RNP_EXPERIMENTAL_CRYPTO_REFRESH defined.\n\
+         // Regenerate via scripts/regenerate-bindings.sh. Do not edit.\n\n"
+    );
+    fs::write(&dest, banner + &generated).expect("Couldn't write pregenerated bindings");
+    eprintln!("rnp-rs: regenerated {} — commit it", dest.display());
+}
+
 fn generate_bindings(include_dir: &std::path::Path) -> bindgen::Bindings {
-    let pqc_on = cfg!(feature = "pqc");
-    let crypto_refresh_on = cfg!(feature = "crypto-refresh");
+    let pqc_on = cfg!(feature = "pqc") || env_flag("RNP_BINDINGS_EXPERIMENTAL");
+    let crypto_refresh_on = cfg!(feature = "crypto-refresh") || env_flag("RNP_BINDINGS_EXPERIMENTAL");
 
     let mut builder = bindgen::Builder::default()
         .header("wrapper.h")
@@ -284,18 +383,20 @@ fn generate_bindings(include_dir: &std::path::Path) -> bindgen::Bindings {
         .clang_arg("-DRNP_USE_64BIT_STRICT")
         .clang_arg("-Wno-deprecated-declarations");
 
-    if pqc_on {
+    if cfg!(feature = "pqc") {
         println!(
             "cargo:warning=rnp-rs: building with RNP_EXPERIMENTAL_PQC — requires \
              librnp built with ENABLE_PQC=ON"
         );
+    }
+    if pqc_on {
         builder = builder.clang_arg("-DRNP_EXPERIMENTAL_PQC");
     }
     if crypto_refresh_on {
         builder = builder.clang_arg("-DRNP_EXPERIMENTAL_CRYPTO_REFRESH");
     }
 
-    let bindings = builder
+    builder
         .allowlist_function("rnp_.*")
         .allowlist_type("rnp_.*")
         .allowlist_var("RNP_.*")
@@ -303,16 +404,7 @@ fn generate_bindings(include_dir: &std::path::Path) -> bindgen::Bindings {
         .layout_tests(false)
         .default_macro_constant_type(bindgen::MacroTypeVariation::Signed)
         .generate()
-        .expect("Unable to generate rnp bindings");
-
-    if pqc_on {
-        println!("cargo:rustc-cfg=feature_pqc");
-    }
-    if crypto_refresh_on {
-        println!("cargo:rustc-cfg=feature_crypto_refresh");
-    }
-
-    bindings
+        .expect("Unable to generate rnp bindings")
 }
 
 // -----------------------------------------------------------------------

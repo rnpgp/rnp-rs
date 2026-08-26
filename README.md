@@ -545,6 +545,29 @@ Botan's `configure.py`). On Windows, use **MSYS2 UCRT64** (`mingw-w64-ucrt-x86_6
 PQC/crypto-refresh use librnp HEAD because 0.18.1's PQC code paths are
 incompatible with Botan 3.12's opaque EC types.
 
+### Pregenerated bindings (cross builds)
+
+Running bindgen requires a working libclang on the build host — which
+minimal cross containers often lack (the common failure is libclang unable
+to find `stdbool.h`). The crate therefore ships pregenerated bindings
+(`bindings/bindings-<librnp-version>.rs`) and uses them automatically
+whenever the headers are known to match — i.e. `vendored` builds against
+librnp 0.18.1. The file is target-independent (rnp.h is opaque handles +
+primitives; C types render as per-target `std::os::raw` aliases).
+
+| Env var | Effect |
+|---|---|
+| `RNP_BINDINGS_RUNTIME=1` | Force runtime bindgen (skip the shipped file) |
+| `RNP_BINDINGS_PREGENERATED=1` | Force the shipped file — the escape hatch for cross builds in system/explicit mode |
+| `RNP_BINDINGS_EXPERIMENTAL=1` | Add the PQC/crypto-refresh defines at bindgen time (regeneration only) |
+| `RNP_BINDINGS_REGENERATE=1` | Copy freshly generated bindings back into `bindings/` |
+
+Regenerate after a librnp version bump:
+
+```sh
+scripts/regenerate-bindings.sh
+```
+
 ## Architecture
 
 Three layers, top to bottom:
