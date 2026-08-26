@@ -22,11 +22,13 @@ pqc = ["crypto-refresh"]
 crypto-refresh = []
 
 [dependencies]
-# Exact pin: 0.31300.1 switched the Windows build step to `nmake` (MSVC),
-# which does not exist under MSYS2/mingw — the toolchain our Windows CI and
-# users use. 0.31300.0 invokes plain `make` everywhere. Unpin once botan-rs
-# picks nmake only for MSVC-style toolchains.
-botan-src = "=0.31300.0"
+# Botan 3.13.0 is held back: librnp 0.18.1 + Botan 3.13.0 exhibits a
+# transient PKESK decryption failure (~1/200 roundtrips, misreported as
+# RNP_ERROR_NO_SUITABLE_KEY). Tracked in rnp-rs#79 / rnpgp/rnp#2465.
+# Botan 3.12.0 is unaffected. Revisit when the upstream issue resolves.
+# (Also: botan-src 0.31300.1 switched Windows builds to nmake, which does
+# not exist under MSYS2/mingw.)
+botan-src = "=0.31200.0"
 # Pure-Rust HTTP + tarball extraction so we don't depend on the system
 # having curl + tar in PATH (Windows runners don't always have curl).
 flate2 = "1"

@@ -538,9 +538,9 @@ Botan's `configure.py`). On Windows, use **MSYS2 UCRT64** (`mingw-w64-ucrt-x86_6
 
 | Feature combo | librnp | Botan | When to use |
 |---|---|---|---|
-| `vendored` | 0.18.1 (stable tarball) | 3.13.0 (full) | Default — all RFC 9580 algorithms |
-| `vendored` + `pqc` | HEAD (git clone) | 3.13.0 (PQC modules enabled) | ML-KEM / ML-DSA / SLH-DSA signing + encryption |
-| `vendored` + `crypto-refresh` | HEAD (git clone) | 3.13.0 (full) | v6 keys, crypto-refresh algorithm names |
+| `vendored` | 0.18.1 (stable tarball) | 3.12.0 (full) | Default — all RFC 9580 algorithms |
+| `vendored` + `pqc` | HEAD (git clone) | 3.12.0 (PQC modules enabled) | ML-KEM / ML-DSA / SLH-DSA signing + encryption |
+| `vendored` + `crypto-refresh` | HEAD (git clone) | 3.12.0 (full) | v6 keys, crypto-refresh algorithm names |
 
 PQC/crypto-refresh use librnp HEAD because 0.18.1's PQC code paths are
 incompatible with Botan 3.12's opaque EC types.
@@ -582,9 +582,10 @@ Recommendations, in order of preference:
 
 1. **System Botan for both** — `rnp` (default, no `vendored`) + `botan`
    (default). One shared `libbotan`, zero duplication.
-2. **Aligned vendored versions** — rnp-src's `botan-src` pin is kept in
-   lockstep with `botan-sys`'s, so mixed graphs compile the same Botan
-   twice (wasteful, ~10 min extra, but correct).
+2. **Aligned vendored versions** — currently held at Botan 3.12.0
+   (3.13.0 has a decrypt bug with librnp 0.18.1, see #79); once
+   unblocked, the pin tracks `botan-sys`'s so mixed graphs compile the
+   same Botan twice (wasteful, ~10 min extra, but correct).
 
 To get a loud warning when a duplicate vendored Botan is detected, enable
 the diagnostic feature on `rnp-sys` from your project:
