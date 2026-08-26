@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Botan 3.13.0 + mixed-graph duplicate-Botan detection (post-split port) by @[object]
+- Pregenerated bindings — cross builds without host libclang ([#69](https://github.com/rnpgp/rnp-rs/pull/69)) by @[object]
+
+### Fixed
+
+- Hold Botan at 3.12.0 — 3.13.0 transient PKESK decrypt failure (rnp-rs#79, rnpgp/rnp#2465) by @[object]
+- Cross-build hardening — toolchain passthrough, no CLI build, no json-c apps by @[object]
+
+### Other
+
+- Split workspace into rnp-src / rnp-sys / rnp (botan-rs pattern) by @[object]
+- Collapse nested if into let-chain (clippy collapsible_if) by @[object]
+- Cargo fmt by @[object]
+- Fix vendored setup guide and add step-by-step tutorial by @[object]
+
 ### Fixed
 
 - Remove needless borrow flagged by clippy by @[object]
