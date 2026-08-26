@@ -12,10 +12,17 @@ documentation = "https://docs.rs/rnp-rs"
 readme = "README.md"
 keywords = ["openpgp", "pgp", "rnp", "crypto", "cryptography"]
 categories = ["api-bindings", "cryptography"]
+# Cargo.lock is deliberately not listed: it is gitignored, and an include
+# entry matching no file breaks `cargo package` in fresh checkouts (the
+# lock only existed in developer trees). Cargo attaches the resolved lock
+# to the package when needed.
 include = [
     "src/**/*.rs",
+    "examples/*.rs",
+    "tests/*.rs",
+    "tests/common/*.rs",
+    "benches/*.rs",
     "Cargo.toml",
-    "Cargo.lock",
     "README.md",
     "LICENSE.md",
 ]
