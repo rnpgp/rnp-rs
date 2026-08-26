@@ -21,9 +21,20 @@ pqc = ["crypto-refresh"]
 # Build librnp with ENABLE_CRYPTO_REFRESH=ON. Same HEAD-vs-0.18.1
 # reasoning as `pqc`.
 crypto-refresh = []
+# Diagnostic: pull in botan-sys so its links metadata becomes visible to
+# our build script. When another crate in the graph enables
+# botan-sys/vendored (e.g. the `botan` crate), Botan is compiled twice
+# (once by botan-sys, once by rnp-src) — emit a loud warning instead of
+# failing silently at link time. Requires a system Botan OR a vendored
+# botan elsewhere in the graph (botan-sys's non-vendored build script
+# probes for a system install).
+botan-sys-detect = ["dep:botan-sys"]
 
 [build-dependencies]
-botan-src = "0.31200"
+botan-src = "0.31300"
+# Optional, only with the `botan-sys-detect` feature. Exact-pin follows
+# the same botan-src as above so a detected graph shares one Botan version.
+botan-sys = { version = "1.20260811", optional = true, features = [] }
 cmake = "0.1"
 # Pure-Rust HTTP + tarball extraction so we don't depend on the system
 # having curl + tar in PATH (Windows runners don't always have curl).
