@@ -31,7 +31,11 @@ crypto-refresh = []
 botan-sys-detect = ["dep:botan-sys"]
 
 [build-dependencies]
-botan-src = "0.31300"
+# Exact pin: 0.31300.1 switched the Windows build step to `nmake` (MSVC),
+# which does not exist under MSYS2/mingw — the toolchain our Windows CI and
+# users use. 0.31300.0 invokes plain `make` everywhere. Unpin once botan-rs
+# picks nmake only for MSVC-style toolchains.
+botan-src = "=0.31300.0"
 # Optional, only with the `botan-sys-detect` feature. Exact-pin follows
 # the same botan-src as above so a detected graph shares one Botan version.
 botan-sys = { version = "1.20260811", optional = true, features = [] }
