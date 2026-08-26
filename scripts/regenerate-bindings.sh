@@ -12,7 +12,7 @@ cd "$(dirname "$0")/.."
 RNP_BINDINGS_RUNTIME=1 \
 RNP_BINDINGS_EXPERIMENTAL=1 \
 RNP_BINDINGS_REGENERATE=1 \
-cargo build --features vendored
+cargo build -p rnp-sys --features vendored
 
 echo
 echo "Done. Commit the file(s) under bindings/."

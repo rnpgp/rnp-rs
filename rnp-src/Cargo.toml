@@ -5,10 +5,9 @@ edition = "2024"
 rust-version = "1.88"
 authors = ["Ribose Inc. <open.source@ribose.com>"]
 license = "BSD-2-Clause"
-description = "Build scripts for compiling librnp from source"
+description = "Compile librnp and dependencies from source (build-time library)"
 repository = "https://github.com/rnpgp/rnp-rs"
 homepage = "https://github.com/rnpgp/rnp-rs"
-links = "rnp"
 
 [features]
 default = []
@@ -22,9 +21,8 @@ pqc = ["crypto-refresh"]
 # reasoning as `pqc`.
 crypto-refresh = []
 
-[build-dependencies]
+[dependencies]
 botan-src = "0.31200"
-cmake = "0.1"
 # Pure-Rust HTTP + tarball extraction so we don't depend on the system
 # having curl + tar in PATH (Windows runners don't always have curl).
 flate2 = "1"
