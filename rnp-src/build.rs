@@ -1,10 +1,8 @@
 // rnp-src build script.
 //
 // Downloads and compiles librnp + Botan + json-c + zlib + bzip2 from
-// source. During `cargo publish --verify`, detects the packaging
-// environment (Cargo.toml.orig present) and skips compilation so
-// verification is fast. When used as a real dependency by rnp-rs,
-// the full compilation runs.
+// source, then emits the install prefixes to rnp-rs via the cargo links
+// mechanism.
 //
 // Pure logic (URL composition, dep registry, links contract) lives in
 // src/links.rs, shared with lib.rs via `#[path]` so it's unit-testable.
@@ -215,6 +213,30 @@ fn write_botan_cmake_config(botan_prefix: &Path) {
 }
 
 // ---------------------------------------------------------------------
+// Cross-compile passthrough. Without a toolchain file, CMake assumes a
+// build for the host OS and injects host-only assumptions (-rdynamic,
+// extensionless ELF executables) that break mingw/OHOS cross builds.
+// Users declare the target platform via:
+//   RNP_CMAKE_TOOLCHAIN=/path/to/toolchain.cmake  → -DCMAKE_TOOLCHAIN_FILE
+//   RNP_CMAKE_ARGS="-DCMAKE_SYSTEM_NAME=..."      → extra configure flags
+// ---------------------------------------------------------------------
+
+fn cross_toolchain_set() -> bool {
+    env::var("RNP_CMAKE_TOOLCHAIN").map(|v| !v.trim().is_empty()).is_ok_and(|v| v)
+}
+
+fn append_cross_passthrough(cmd: &mut Command) {
+    if let Ok(toolchain) = env::var("RNP_CMAKE_TOOLCHAIN") {
+        if !toolchain.trim().is_empty() {
+            cmd.arg(format!("-DCMAKE_TOOLCHAIN_FILE={toolchain}"));
+        }
+    }
+    if let Ok(args) = env::var("RNP_CMAKE_ARGS") {
+        cmd.args(args.split_whitespace());
+    }
+}
+
+// ---------------------------------------------------------------------
 // Generic cmake dep builder. json-c and zlib are config-driven via
 // `CmakeDep`; this is the single place that knows how to invoke cmake.
 // Adding a new cmake-based dep = one `CmakeDep` const + a `Deps::push`
@@ -243,6 +265,7 @@ fn cmake_dep_build(dep: &CmakeDep, src_root: &Path, prefix: &Path) {
     if let Some(min) = dep.cmake_policy_minimum {
         configure.arg(format!("-DCMAKE_POLICY_VERSION_MINIMUM={min}"));
     }
+    append_cross_passthrough(&mut configure);
     run(&mut configure, &format!("{} cmake", dep.name));
 
     run(
@@ -323,11 +346,15 @@ fn build_bzip2(src_dir: &Path, prefix: &Path) {
         download_and_extract(&url, src_dir);
     }
 
-    let cc = if cfg!(target_os = "macos") {
-        "/usr/bin/clang"
-    } else {
-        "gcc"
-    };
+    // Honor CC from the environment (cross builds point it at the target
+    // compiler) before falling back to platform defaults.
+    let cc = env::var("CC").unwrap_or_else(|_| {
+        if cfg!(target_os = "macos") {
+            "/usr/bin/clang".to_string()
+        } else {
+            "gcc".to_string()
+        }
+    });
 
     run(
         Command::new("make")
@@ -545,12 +572,16 @@ fn build_librnp(src_dir: &Path, prefix: &Path, deps: &Deps) {
         rnp_src.to_str().unwrap(),
         "-B",
         build_dir.to_str().unwrap(),
-    ])
-    .args([
-        format!("-DCMAKE_C_COMPILER={cc}"),
-        format!("-DCMAKE_CXX_COMPILER={cxx}"),
-    ])
-    .args(["-DCRYPTO_BACKEND=botan3"])
+    ]);
+    // A user-supplied toolchain file owns compiler selection; our hardcoded
+    // host defaults would override it and break cross builds.
+    if !cross_toolchain_set() {
+        cmd.args([
+            format!("-DCMAKE_C_COMPILER={cc}"),
+            format!("-DCMAKE_CXX_COMPILER={cxx}"),
+        ]);
+    }
+    cmd.args(["-DCRYPTO_BACKEND=botan3"])
     .args([
         "-DBUILD_SHARED_LIBS=OFF",
         "-DBUILD_TESTING=OFF",
@@ -561,6 +592,7 @@ fn build_librnp(src_dir: &Path, prefix: &Path, deps: &Deps) {
     .arg(format!("-DCMAKE_PREFIX_PATH={}", deps.cmake_prefix_path()))
     .arg(format!("-DCMAKE_INSTALL_PREFIX={}", prefix.display()))
     .arg("-DCMAKE_POLICY_VERSION_MINIMUM=3.5");
+    append_cross_passthrough(&mut cmd);
 
     // Optional upstream features: surface as Cargo features on rnp-src so
     // rnp-rs can flip them without changing the build pipeline.
@@ -588,17 +620,33 @@ fn build_librnp(src_dir: &Path, prefix: &Path, deps: &Deps) {
     }
 
     run(&mut cmd, "librnp cmake");
+    // Build only the library target. The rnp/rnpkeys CLI executables are of
+    // no use to a static-library consumer, and on some cross builds rnp's
+    // CMakeLists excludes the CLI from the build while its install rule
+    // still references it — a bare `cmake --install` then fails. Skipping
+    // the CLI also cuts compile time.
     run(
         Command::new("cmake").args([
             "--build",
             build_dir.to_str().unwrap(),
+            "--target",
+            "librnp",
             "--parallel",
             &nproc(),
         ]),
         "librnp build",
     );
+    // Install only the development component (librnp.a, libsexpp.a, and all
+    // rnp headers install under COMPONENT development upstream; the CLIs are
+    // COMPONENT cli). Component-scoped install never touches the CLI rules,
+    // so it cannot fail on an unbuilt executable.
     run(
-        Command::new("cmake").args(["--install", build_dir.to_str().unwrap()]),
+        Command::new("cmake").args([
+            "--install",
+            build_dir.to_str().unwrap(),
+            "--component",
+            "development",
+        ]),
         "librnp install",
     );
 }

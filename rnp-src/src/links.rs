@@ -136,7 +136,11 @@ pub const JSON_C: CmakeDep = CmakeDep {
     name: "json-c",
     version: "0.17",
     url_template: "https://s3.amazonaws.com/json-c_releases/releases/json-c-{version}.tar.gz",
-    extra_cmake_args: &["-DBUILD_TESTING=OFF"],
+    // JSONC_BUILD_APPS: json-c's sample apps (apps/json_parse, ...) are not
+    // gated by BUILD_TESTING. On cross builds, linking executables drags in
+    // the host's executable-linking assumptions (-rdynamic etc.), which is a
+    // separate failure class from the library itself.
+    extra_cmake_args: &["-DBUILD_TESTING=OFF", "-DJSONC_BUILD_APPS=OFF"],
     cmake_policy_minimum: Some("3.5"),
     installed_lib_aliases: &[],
 };
