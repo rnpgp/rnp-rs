@@ -42,10 +42,22 @@ vendored = ["dep:rnp-src"]
 pqc = ["crypto-refresh", "rnp-src?/pqc"]
 # Build with ENABLE_CRYPTO_REFRESH=ON — same HEAD switch as `pqc`.
 crypto-refresh = ["rnp-src?/crypto-refresh"]
+# Diagnostic: pull in botan-sys so its links metadata becomes visible to
+# this build script. When another crate in the graph enables
+# botan-sys/vendored (e.g. the `botan` crate), Botan is compiled twice —
+# once by botan-sys, once by rnp-src via our vendored path — and the final
+# link binds whichever archive comes first. Emit a loud warning instead of
+# leaving that to fail (or link the wrong Botan) silently. Requires a
+# system Botan OR a vendored botan elsewhere in the graph, since botan-sys's
+# non-vendored build probes for a system install.
+botan-sys-detect = ["dep:botan-sys"]
 
 [build-dependencies]
 # Build-time library that compiles the whole C/C++ stack (botan-rs
 # `botan-src` pattern: the -sys crate's build script calls rnp_src::build()).
 rnp-src = { version = "0.2", path = "../rnp-src", optional = true }
+# Optional, only with the `botan-sys-detect` feature. Version follows
+# rnp-src's botan-src pin so a detected graph shares one Botan version.
+botan-sys = { version = "1.20260811", optional = true }
 bindgen = "0.72"
 pkg-config = "0.3"

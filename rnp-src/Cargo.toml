@@ -22,7 +22,11 @@ pqc = ["crypto-refresh"]
 crypto-refresh = []
 
 [dependencies]
-botan-src = "0.31200"
+# Exact pin: 0.31300.1 switched the Windows build step to `nmake` (MSVC),
+# which does not exist under MSYS2/mingw — the toolchain our Windows CI and
+# users use. 0.31300.0 invokes plain `make` everywhere. Unpin once botan-rs
+# picks nmake only for MSVC-style toolchains.
+botan-src = "=0.31300.0"
 # Pure-Rust HTTP + tarball extraction so we don't depend on the system
 # having curl + tar in PATH (Windows runners don't always have curl).
 flate2 = "1"
