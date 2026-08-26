@@ -9,6 +9,9 @@
 [workspace]
 git_release_enable = false
 dependencies_update = true
+# Publishing is handled by .github/workflows/publish.yml via crates.io
+# trusted publishing (GitHub Actions OIDC) — no long-lived token here.
+publish = false
 
 # Changelog configuration.
 [changelog]
