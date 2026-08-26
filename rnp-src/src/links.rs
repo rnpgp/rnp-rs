@@ -1,37 +1,18 @@
-//! Shared types and constants between `rnp-src`'s build.rs and its lib.rs.
+//! Shared types and constants for rnp-src's build pipeline.
 //!
-//! Both files path-include this module so the links contract has a single
-//! source of truth and the pure logic is unit-testable from lib.rs.
+//! Path-includeable from the crate root (see `lib.rs`) so the pure logic is
+//! unit-testable without invoking the C/C++ toolchain.
 
 use std::path::{Path, PathBuf};
 
 // ---------------------------------------------------------------------
-// links contract — single source of truth for the cargo:foo=… ↔
-// DEP_RNP_FOO env-var convention used between this crate's build.rs and
-// rnp-rs's build.rs.
+// Dependency registry — single source of truth for what rnp-src builds.
+// Adding a dep here automatically flows through to the cmake prefix path
+// and the per-dep lib dirs returned by `build()`.
 // ---------------------------------------------------------------------
 
-/// The `links = "rnp"` Cargo prefix that downstream build scripts see
-/// on env vars emitted by this crate.
-pub const LINKS_ENV_PREFIX: &str = "DEP_RNP_";
-
-/// Suffix appended to a dependency name to form its lib-dir env var.
-/// `botan` → `DEP_RNP_BOTAN_LIB_DIR`.
-pub const LINKS_LIB_DIR_SUFFIX: &str = "_LIB_DIR";
-
-/// All dependency names whose `<prefix>/lib` rnp-src emits via
-/// `cargo:<name>_lib_dir=<path>`. Adding a dep here makes both the
-/// emitter (`Deps::emit_cargo_paths`) and the consumer (`rnp-rs/build.rs`)
-/// pick it up automatically.
+/// All dependency names rnp-src installs, in cmake-prefix order.
 pub const DEPS: &[&str] = &["botan", "jsonc", "zlib", "bzip2"];
-
-/// Compose the env-var name rnp-rs should read for a given dep's lib dir.
-///
-/// Cargo uppercases the entire env var name when surfacing `cargo:key=value`
-/// directives as `DEP_<LINKS>_<KEY>` env vars, so we uppercase too to match.
-pub fn lib_dir_env_var(name: &str) -> String {
-    format!("{LINKS_ENV_PREFIX}{name}{LINKS_LIB_DIR_SUFFIX}").to_uppercase()
-}
 
 // ---------------------------------------------------------------------
 // Deps — collection of per-dep install prefixes.
@@ -74,16 +55,10 @@ impl Deps {
             .join(";")
     }
 
-    /// Emit `cargo:<name>_lib_dir=<prefix>/lib` lines so rnp-rs can find
-    /// each dep's static library at link time.
-    pub fn emit_cargo_paths(&self) {
-        for dep in &self.items {
-            println!(
-                "cargo:{}_lib_dir={}",
-                dep.name,
-                dep.prefix.join("lib").display()
-            );
-        }
+    /// Per-dep lib dirs in registration order — the caller emits these as
+    /// linker search paths.
+    pub fn lib_dirs(&self) -> impl Iterator<Item = PathBuf> + '_ {
+        self.items.iter().map(|d| d.prefix.join("lib"))
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &Dep> {
@@ -162,25 +137,6 @@ pub const ZLIB: CmakeDep = CmakeDep {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn lib_dir_env_var_for_botan() {
-        assert_eq!(lib_dir_env_var("botan"), "DEP_RNP_BOTAN_LIB_DIR");
-    }
-
-    #[test]
-    fn lib_dir_env_var_for_zlib() {
-        assert_eq!(lib_dir_env_var("zlib"), "DEP_RNP_ZLIB_LIB_DIR");
-    }
-
-    #[test]
-    fn all_deps_produce_well_formed_env_vars() {
-        for &name in DEPS {
-            let var = lib_dir_env_var(name);
-            assert!(var.starts_with(LINKS_ENV_PREFIX));
-            assert!(var.ends_with(LINKS_LIB_DIR_SUFFIX));
-        }
-    }
 
     #[test]
     fn deps_cmake_prefix_path_joins_with_semicolon() {

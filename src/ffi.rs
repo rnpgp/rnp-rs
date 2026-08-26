@@ -1,16 +1,9 @@
-//! Raw FFI bindings to `librnp`, generated at build time by `bindgen` from the
-//! installed `rnp/rnp.h` header.
+//! Raw FFI bindings to `librnp`, re-exported from the [`rnp_sys`] crate.
 //!
 //! The contents of this module are entirely machine-generated and mirror the
-//! upstream C API verbatim, including its naming conventions. The lint
-//! suppressions below acknowledge that: C identifiers are not Rust-idiomatic
-//! and we do not want to fight the compiler over them.
+//! upstream C API verbatim, including its naming conventions — see the
+//! `rnp-sys` crate for generation details (bindgen at build time, or the
+//! pregenerated file when the headers are known to match). Kept as a module
+//! so the safe wrappers' `crate::ffi` paths stay stable.
 
-#![allow(
-    non_camel_case_types,
-    non_snake_case,
-    dead_code,
-    non_upper_case_globals
-)]
-
-include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+pub use rnp_sys::*;

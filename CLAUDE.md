@@ -49,7 +49,7 @@ RNP_LIB_DIR=/path/to/rnp/install/lib \
 cargo build
 ```
 
-`build.rs` (`build.rs:21-43`) searches `RNP_INCLUDE_DIR`, then Homebrew's
+rnp-sys's build script (`rnp-sys/build.rs`) searches `RNP_INCLUDE_DIR`, then Homebrew's
 `/opt/homebrew/include` and `/usr/local/include`, then `/usr/include`. The lib
 dir is taken from `RNP_LIB_DIR` or assumed to be a sibling of the include dir.
 
@@ -67,12 +67,22 @@ would try to compile those as Rust.
 
 ## Architecture
 
-Three layers, top to bottom:
+Three-crate workspace, mirroring the botan-rs layout
+(`botan-src` : `botan-sys` : `botan`):
 
-1. **`src/ffi.rs`** — `include!`s the bindgen-generated `$OUT_DIR/bindings.rs`.
-   The module is `#![allow(non_camel_case_types, non_snake_case, dead_code)]` —
-   the FFI module mirrors the C API verbatim and we don't fight the linter over
-   it. Never `use` from `ffi::` in the public API; keep it crate-private.
+- **`rnp-src/`** — build-time library compiling librnp + deps from source
+  (no build script, no `links`; `rnp_src::build() -> Installed` is called
+  from rnp-sys's build script, so the build lands in the caller's OUT_DIR).
+- **`rnp-sys/`** — raw FFI crate: owns `links = "rnp"`, the build script
+  (link-mode dispatch: vendored/explicit/pkg-config, pregenerated
+  `bindings/bindings-<ver>.rs` vs runtime bindgen, link directives).
+- **`rnp-rs` root** — safe wrappers; no build script. `src/ffi.rs` is a
+  `pub use rnp_sys::*;` re-export keeping `crate::ffi` paths stable.
+
+Safe-wrapper layers, top to bottom:
+
+1. **`src/ffi.rs`** — re-exports `rnp_sys::*`.
+   Never `use` from `ffi::` in the public API; keep it crate-private.
 
 2. **`src/error.rs`** — `Error` (snafu), `Result<T>`, and `check(rnp_result_t)`.
    `check` maps non-zero codes to `Error::Rnp { code, message }` via

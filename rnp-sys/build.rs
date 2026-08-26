@@ -1,10 +1,11 @@
-// Build script: generate raw FFI bindings via bindgen and link against librnp.
+// rnp-sys build script: generate raw FFI bindings (bindgen or the
+// pregenerated file) and link against librnp.
 //
 // Three linking modes, dispatched at compile time via cfg(feature):
 //
-//   1. --features vendored — delegate to the `rnp-src` crate, which
-//      compiles librnp + Botan + json-c + zlib + bzip2 from source and
-//      emits DEP_RNP_* env vars.
+//   1. --features vendored — call rnp_src::build(), which compiles librnp
+//      + Botan + json-c + zlib + bzip2 from source into our OUT_DIR and
+//      returns the install layout (botan-rs `botan-src` pattern).
 //   2. RNP_INCLUDE_DIR / RNP_LIB_DIR env vars (explicit path).
 //   3. Default — pkg-config discovers the system librnp; falls back to
 //      hardcoded candidate paths on minimal images.
@@ -12,9 +13,6 @@
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-
-#[cfg(feature = "vendored")]
-use rnp_src::links;
 
 fn main() {
     let loc = locate_librnp();
@@ -60,7 +58,7 @@ fn main() {
             bindings
                 .write_to_file(&bindings_path)
                 .expect("Couldn't write bindings");
-            maybe_regenerate_bindings(&bindings_path);
+            maybe_regenerate_bindings(&bindings_path, loc.librnp_version.as_deref());
         }
     }
 
@@ -87,6 +85,9 @@ struct LibrnpLocation {
     include_dir: PathBuf,
     lib_dir: Option<PathBuf>,
     link_mode: LinkMode,
+    /// Vendored mode only: which librnp source was built ("0.18.1" / "head").
+    /// Drives pregenerated-bindings selection; None for system/explicit.
+    librnp_version: Option<String>,
     /// Additional `-L` paths emitted via cargo:rustc-link-search. Empty
     /// for System/Explicit; populated by Vendored to surface per-dep
     /// install prefixes (Botan, json-c, zlib, bzip2).
@@ -128,25 +129,17 @@ fn locate_librnp() -> LibrnpLocation {
 
 #[cfg(feature = "vendored")]
 fn locate_vendored() -> LibrnpLocation {
-    let lib_dir = PathBuf::from(
-        env::var("DEP_RNP_LIB_DIR")
-            .expect("DEP_RNP_LIB_DIR not set — rnp-src's build.rs didn't emit lib_dir"),
-    );
-    let include_dir =
-        PathBuf::from(env::var("DEP_RNP_INCLUDE_DIR").expect("DEP_RNP_INCLUDE_DIR not set"));
-    // rnp-src emits one cargo:<name>_lib_dir= per dep in `links::DEPS`.
-    // Single source of truth — adding a dep there automatically flows
-    // through to the linker search path here.
-    let extra_lib_dirs: Vec<PathBuf> = links::DEPS
-        .iter()
-        .filter_map(|&name| env::var(links::lib_dir_env_var(name)).ok())
-        .map(PathBuf::from)
-        .collect();
+    // Compiles into OUR OUT_DIR (the caller's, per the botan-src pattern).
+    let installed = rnp_src::build();
+    // Links metadata for any downstream build script that wants to know
+    // which librnp flavor was linked (DEP_RNP_LIBRNP_VERSION).
+    println!("cargo:librnp_version={}", installed.librnp_version);
     LibrnpLocation {
-        include_dir,
-        lib_dir: Some(lib_dir),
+        librnp_version: Some(installed.librnp_version),
+        include_dir: installed.include_dir,
+        lib_dir: Some(installed.lib_dir),
         link_mode: LinkMode::Vendored,
-        extra_lib_dirs,
+        extra_lib_dirs: installed.dep_lib_dirs,
         extra_link_libs: Vec::new(),
     }
 }
@@ -182,6 +175,7 @@ fn locate_explicit() -> Option<LibrnpLocation> {
         include_dir,
         lib_dir,
         link_mode: LinkMode::Explicit,
+        librnp_version: None,
         extra_lib_dirs: Vec::new(),
         extra_link_libs: Vec::new(),
     })
@@ -211,6 +205,7 @@ fn locate_via_pkg_config() -> Option<LibrnpLocation> {
         include_dir,
         lib_dir,
         link_mode: LinkMode::System,
+        librnp_version: None,
         extra_lib_dirs: lib.link_paths.clone(),
         extra_link_libs,
     })
@@ -284,6 +279,7 @@ fn locate_via_hardcoded_paths() -> LibrnpLocation {
         include_dir,
         lib_dir,
         link_mode: LinkMode::System,
+        librnp_version: None,
         extra_lib_dirs: Vec::new(),
         extra_link_libs,
     }
@@ -342,8 +338,7 @@ fn bindings_source(loc: &LibrnpLocation) -> BindingsSource {
         );
         return BindingsSource::Pregenerated(prebuilt);
     }
-    let version_matches =
-        env::var("DEP_RNP_LIBRNP_VERSION").as_deref() == Ok(PREGENERATED_LIBRNP_VERSION);
+    let version_matches = loc.librnp_version.as_deref() == Some(PREGENERATED_LIBRNP_VERSION);
     if loc.link_mode == LinkMode::Vendored && version_matches && prebuilt.exists() {
         return BindingsSource::Pregenerated(prebuilt);
     }
@@ -355,11 +350,11 @@ fn bindings_source(loc: &LibrnpLocation) -> BindingsSource {
 /// (that's how we know which librnp version the headers are from). Pair
 /// with RNP_BINDINGS_EXPERIMENTAL=1 to include the PQC/crypto-refresh
 /// surface in the shipped file.
-fn maybe_regenerate_bindings(out_bindings: &Path) {
+fn maybe_regenerate_bindings(out_bindings: &Path, librnp_version: Option<&str>) {
     if !env_flag("RNP_BINDINGS_REGENERATE") {
         return;
     }
-    let version = env::var("DEP_RNP_LIBRNP_VERSION").expect(
+    let version = librnp_version.expect(
         "RNP_BINDINGS_REGENERATE requires --features vendored to identify the librnp version",
     );
     let dest_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("bindings");
