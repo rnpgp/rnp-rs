@@ -222,7 +222,9 @@ fn write_botan_cmake_config(botan_prefix: &Path) {
 // ---------------------------------------------------------------------
 
 fn cross_toolchain_set() -> bool {
-    env::var("RNP_CMAKE_TOOLCHAIN").map(|v| !v.trim().is_empty()).is_ok_and(|v| v)
+    env::var("RNP_CMAKE_TOOLCHAIN")
+        .map(|v| !v.trim().is_empty())
+        .is_ok_and(|v| v)
 }
 
 fn append_cross_passthrough(cmd: &mut Command) {
@@ -582,16 +584,16 @@ fn build_librnp(src_dir: &Path, prefix: &Path, deps: &Deps) {
         ]);
     }
     cmd.args(["-DCRYPTO_BACKEND=botan3"])
-    .args([
-        "-DBUILD_SHARED_LIBS=OFF",
-        "-DBUILD_TESTING=OFF",
-        "-DENABLE_DOC=OFF",
-    ])
-    .args(["-DCMAKE_BUILD_TYPE=Release"])
-    .arg("-DCMAKE_CXX_FLAGS=-include cstring")
-    .arg(format!("-DCMAKE_PREFIX_PATH={}", deps.cmake_prefix_path()))
-    .arg(format!("-DCMAKE_INSTALL_PREFIX={}", prefix.display()))
-    .arg("-DCMAKE_POLICY_VERSION_MINIMUM=3.5");
+        .args([
+            "-DBUILD_SHARED_LIBS=OFF",
+            "-DBUILD_TESTING=OFF",
+            "-DENABLE_DOC=OFF",
+        ])
+        .args(["-DCMAKE_BUILD_TYPE=Release"])
+        .arg("-DCMAKE_CXX_FLAGS=-include cstring")
+        .arg(format!("-DCMAKE_PREFIX_PATH={}", deps.cmake_prefix_path()))
+        .arg(format!("-DCMAKE_INSTALL_PREFIX={}", prefix.display()))
+        .arg("-DCMAKE_POLICY_VERSION_MINIMUM=3.5");
     append_cross_passthrough(&mut cmd);
 
     // Optional upstream features: surface as Cargo features on rnp-src so
