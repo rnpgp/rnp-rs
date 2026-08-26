@@ -1,4 +1,8 @@
-name: Publish
+# Named after the file deliberately: crates.io trusted publishing matches
+# the OIDC `workflow` claim (which GitHub sets to this name:) against the
+# workflow *filename* configured on crates.io. With name: != filename the
+# token exchange is rejected as "no token found".
+name: publish.yml
 
 # Trusted publishing to crates.io via GitHub Actions OIDC — no
 # long-lived CARGO_REGISTRY_TOKEN secret in this repo.
