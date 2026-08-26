@@ -1,0 +1,109 @@
+name: Publish
+
+# Trusted publishing to crates.io via GitHub Actions OIDC — no
+# long-lived CARGO_REGISTRY_TOKEN secret in this repo.
+#
+# Before this works, a crate owner must add a Trusted Publisher on
+# crates.io for each crate (rnp-src, rnp-sys, rnp-rs):
+#   repository: rnpgp/rnp-rs
+#   workflow:   publish.yml
+#   environment: (leave empty)
+# Until that is configured, cargo publish will fail with an auth error.
+#
+# Publishing is idempotent: a version already on crates.io is skipped,
+# so re-running on any push to main is safe. Runs after release-plz's
+# release PR (version bump) lands on main; release-plz itself no longer
+# publishes (release-plz.toml sets publish = false).
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  RUSTFLAGS: -D warnings
+
+jobs:
+  publish:
+    name: cargo publish (trusted)
+    runs-on: ubuntu-24.04
+    # Required for the OIDC token exchange that crates.io trusted
+    # publishing uses. cargo (>= 1.89) picks this up automatically when
+    # no registry token is configured.
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libbotan-2-dev libjson-c-dev \
+            zlib1g-dev libbz2-dev cmake build-essential python3
+
+      # cargo publish runs the package build (verification), which needs
+      # real librnp headers. Build Botan 3.12 + librnp 0.18.1 from source
+      # into $RUNNER_TEMP so nothing lands in the working tree. Mirrors
+      # the release.yml job.
+      - name: Build Botan 3.12.0
+        run: |
+          BOTAN_PREFIX="$RUNNER_TEMP/rnp-deps/botan"
+          cd "$RUNNER_TEMP"
+          curl -sLO https://botan.randombit.net/releases/Botan-3.12.0.tar.xz
+          tar xf Botan-3.12.0.tar.xz
+          cd Botan-3.12.0
+          python3 configure.py \
+            --prefix="$BOTAN_PREFIX" \
+            --with-build-dir="$RUNNER_TEMP/botan-build" \
+            --link-method=copy \
+            --cc=gcc --cc-bin=g++ \
+            --disable-modules=unsupported
+          make -f "$RUNNER_TEMP/botan-build/Makefile" -j"$(nproc)"
+          make -f "$RUNNER_TEMP/botan-build/Makefile" install
+
+      - name: Build librnp 0.18.1
+        run: |
+          BOTAN_PREFIX="$RUNNER_TEMP/rnp-deps/botan"
+          RNP_PREFIX="$RUNNER_TEMP/rnp-deps/rnp"
+          cd "$RUNNER_TEMP"
+          curl -sLO https://github.com/rnpgp/rnp/releases/download/v0.18.1/rnp-v0.18.1.tar.gz
+          tar xf rnp-v0.18.1.tar.gz
+          cmake -S rnp-v0.18.1 -B rnp-v0.18.1/build \
+            -DCRYPTO_BACKEND=botan3 \
+            -DBUILD_SHARED_LIBS=ON \
+            -DBUILD_TESTING=OFF \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-include cstring" \
+            -DCMAKE_INSTALL_PREFIX="$RNP_PREFIX" \
+            -DCMAKE_PREFIX_PATH="$BOTAN_PREFIX"
+          cmake --build rnp-v0.18.1/build --parallel "$(nproc)"
+          cmake --install rnp-v0.18.1/build
+
+      - name: Point the crates at the locally-built librnp
+        run: |
+          RNP_PREFIX="$RUNNER_TEMP/rnp-deps/rnp"
+          BOTAN_PREFIX="$RUNNER_TEMP/rnp-deps/botan"
+          {
+            echo "RNP_INCLUDE_DIR=$RNP_PREFIX/include"
+            echo "RNP_LIB_DIR=$RNP_PREFIX/lib"
+            echo "LD_LIBRARY_PATH=$RNP_PREFIX/lib:$BOTAN_PREFIX/lib"
+          } >> "$GITHUB_ENV"
+
+      # Dependency order matters: rnp-src → rnp-sys → rnp-rs. Each step
+      # skips versions already on crates.io so re-runs are safe.
+      - name: Publish rnp-src
+        run: .github/scripts/publish-idempotent.sh rnp-src
+
+      - name: Publish rnp-sys
+        run: .github/scripts/publish-idempotent.sh rnp-sys
+
+      - name: Publish rnp-rs
+        run: .github/scripts/publish-idempotent.sh rnp-rs
