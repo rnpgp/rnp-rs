@@ -1,7 +1,7 @@
 #!/bin/sh
 # Publish a workspace crate to crates.io, skipping versions already
 # published (idempotent). Designed for trusted publishing (OIDC) — no
-# token argument; cargo acquires a short-lived token via the GitHub
+# token argument; -v surfaces the crates.io exchange error; cargo acquires a short-lived token via the GitHub
 # Actions environment when the crate is configured as a trusted
 # publisher on crates.io.
 set -eu
@@ -24,4 +24,4 @@ DIR="$(cargo metadata --no-deps --format-version 1 \
   | jq -r ".packages[] | select(.name == \"$CRATE\") | .manifest_path" \
   | xargs dirname)"
 cd "$DIR"
-exec cargo publish
+exec cargo publish -v
