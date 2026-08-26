@@ -97,6 +97,22 @@ jobs:
             echo "LD_LIBRARY_PATH=$RNP_PREFIX/lib:$BOTAN_PREFIX/lib"
           } >> "$GITHUB_ENV"
 
+      # Print the OIDC identity this job presents (repository, workflow,
+      # ref, environment claims) so it can be compared against the
+      # trusted-publisher entries configured on crates.io. The claims are
+      # not secret; the token itself is never printed.
+      - name: Diagnose OIDC identity
+        run: |
+          if [ -z "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" ]; then
+            echo "no OIDC request token present — id-token: write missing?"
+            exit 0
+          fi
+          for AUD in crates.io api://crates.io; do
+            TOK="$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN"               "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUD" | jq -r .value)"
+            echo "--- audience=$AUD ---"
+            printf '%s' "$TOK" | cut -d. -f2 | tr '_-' '/+'               | base64 -d 2>/dev/null               | jq '{sub, repository, workflow, ref, environment, aud}' || true
+          done
+
       # Dependency order matters: rnp-src → rnp-sys → rnp-rs. Each step
       # skips versions already on crates.io so re-runs are safe.
       - name: Publish rnp-src
