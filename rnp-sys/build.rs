@@ -15,6 +15,23 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 fn main() {
+    // Mixed-graph detection (requires the `botan-sys-detect` feature, which
+    // makes botan-sys's links metadata visible here). If another crate in
+    // this build graph enabled botan-sys's vendored feature, Botan is being
+    // compiled twice — once by botan-sys, once by our vendored path — and
+    // the final link binds whichever archive comes first in search-path
+    // order. Warn loudly rather than leave that to fail (or link the wrong
+    // Botan) at link time.
+    if env::var("DEP_BOTAN_VENDORED").as_deref() == Ok("1") {
+        println!(
+            "cargo:warning=rnp-sys: botan-sys/vendored is also active in this build graph. \
+             Botan is being compiled TWICE (botan-sys's build and rnp-src's build). \
+             The linker will pick one libbotan-3 by search-path order. Prefer system Botan \
+             for both crates, or align Botan versions, to avoid duplicate builds and \
+             order-dependent linking."
+        );
+    }
+
     let loc = locate_librnp();
 
     let rnp_header = loc.include_dir.join("rnp").join("rnp.h");
