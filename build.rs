@@ -342,7 +342,8 @@ fn bindings_source(loc: &LibrnpLocation) -> BindingsSource {
         );
         return BindingsSource::Pregenerated(prebuilt);
     }
-    let version_matches = env::var("DEP_RNP_LIBRNP_VERSION").as_deref() == Ok(PREGENERATED_LIBRNP_VERSION);
+    let version_matches =
+        env::var("DEP_RNP_LIBRNP_VERSION").as_deref() == Ok(PREGENERATED_LIBRNP_VERSION);
     if loc.link_mode == LinkMode::Vendored && version_matches && prebuilt.exists() {
         return BindingsSource::Pregenerated(prebuilt);
     }
@@ -358,8 +359,9 @@ fn maybe_regenerate_bindings(out_bindings: &Path) {
     if !env_flag("RNP_BINDINGS_REGENERATE") {
         return;
     }
-    let version = env::var("DEP_RNP_LIBRNP_VERSION")
-        .expect("RNP_BINDINGS_REGENERATE requires --features vendored to identify the librnp version");
+    let version = env::var("DEP_RNP_LIBRNP_VERSION").expect(
+        "RNP_BINDINGS_REGENERATE requires --features vendored to identify the librnp version",
+    );
     let dest_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("bindings");
     fs::create_dir_all(&dest_dir).expect("Couldn't create bindings/ directory");
     let dest = dest_dir.join(format!("bindings-{version}.rs"));
@@ -375,7 +377,8 @@ fn maybe_regenerate_bindings(out_bindings: &Path) {
 
 fn generate_bindings(include_dir: &std::path::Path) -> bindgen::Bindings {
     let pqc_on = cfg!(feature = "pqc") || env_flag("RNP_BINDINGS_EXPERIMENTAL");
-    let crypto_refresh_on = cfg!(feature = "crypto-refresh") || env_flag("RNP_BINDINGS_EXPERIMENTAL");
+    let crypto_refresh_on =
+        cfg!(feature = "crypto-refresh") || env_flag("RNP_BINDINGS_EXPERIMENTAL");
 
     let mut builder = bindgen::Builder::default()
         .header("wrapper.h")
