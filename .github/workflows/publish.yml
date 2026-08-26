@@ -117,13 +117,26 @@ jobs:
             printf '%s' "$TOK" | cut -d. -f2 | tr '_-' '/+'               | base64 -d 2>/dev/null               | jq '{sub, repository, workflow, ref, environment, aud}' || true
           done
 
+      # Exchange the job's OIDC identity for a 30-minute crates.io publish
+      # token (per crates.io's trusted-publishing docs — cargo itself does
+      # NOT perform the exchange; without this step cargo falls back to
+      # "no token found"). The token is ephemeral; nothing is stored.
+      - uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+
       # Dependency order matters: rnp-src → rnp-sys → rnp-rs. Each step
       # skips versions already on crates.io so re-runs are safe.
       - name: Publish rnp-src
         run: .github/scripts/publish-idempotent.sh rnp-src
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
 
       - name: Publish rnp-sys
         run: .github/scripts/publish-idempotent.sh rnp-sys
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
 
       - name: Publish rnp-rs
         run: .github/scripts/publish-idempotent.sh rnp-rs
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
