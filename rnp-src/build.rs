@@ -86,7 +86,7 @@ fn main() {
     // this build graph enabled botan-sys's vendored feature, Botan is being
     // compiled twice — once by botan-sys, once below — and the final link
     // binds whichever archive comes first in the search-path order. Warn
-    // loudly rather than leave that to fail (or worse, silently mis-link)
+    // loudly rather than leave that to fail (or worse, silently link the wrong Botan)
     // at link time.
     if env::var("DEP_BOTAN_VENDORED").as_deref() == Ok("1") {
         println!(
