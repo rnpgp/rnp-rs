@@ -10,6 +10,10 @@ are the detailed audit trail for each feature area.
 
 ## [Unreleased]
 
+### Fixed
+
+- Drop gitignored Cargo.lock from include; ship tests/examples/benches by @[object]
+
 ### Added
 
 - Botan 3.13.0 + mixed-graph duplicate-Botan detection (post-split port) by @[object]
