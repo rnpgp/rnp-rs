@@ -123,6 +123,14 @@ fn main() {
     let rnp_inc = rnp_prefix.join("include");
     println!("cargo:lib_dir={}", rnp_lib.display());
     println!("cargo:include_dir={}", rnp_inc.display());
+    // Which librnp flavor was built. rnp-rs's build.rs uses this to decide
+    // whether its pregenerated bindgen output (generated against the
+    // 0.18.1 headers) is applicable. "head" always falls back to runtime
+    // bindgen since HEAD's API surface drifts.
+    #[cfg(not(any(feature = "pqc", feature = "crypto-refresh")))]
+    println!("cargo:librnp_version={RNP_VERSION}");
+    #[cfg(any(feature = "pqc", feature = "crypto-refresh"))]
+    println!("cargo:librnp_version=head");
 
     // Per-dep lib dirs — single source of truth in `Deps::emit_cargo_paths`,
     // matched on the consumer side by `rnp_src::links::DEPS`.
