@@ -52,6 +52,17 @@ impl Context {
     /// status JSON (counts of new / updated / unchanged keys).
     pub fn import_keys(&self, bytes: &[u8], flags: crate::key::LoadSaveFlags) -> Result<String> {
         let input = Input::from_memory(bytes)?;
+        self.import_keys_from_input(&input, flags)
+    }
+
+    /// As [`Context::import_keys`], over a caller-built [`Input`] — e.g.
+    /// from [`Input::from_reader`](crate::Input::from_reader) to import
+    /// key material streamed from a file or socket.
+    pub fn import_keys_from_input(
+        &self,
+        input: &Input,
+        flags: crate::key::LoadSaveFlags,
+    ) -> Result<String> {
         call_for_string(|raw| unsafe {
             ffi::rnp_import_keys(self.ffi, input.as_ptr(), flags.bits(), raw)
         })
@@ -60,6 +71,11 @@ impl Context {
     /// Import signatures from raw bytes. Returns the status JSON.
     pub fn import_signatures(&self, bytes: &[u8], flags: u32) -> Result<String> {
         let input = Input::from_memory(bytes)?;
+        self.import_signatures_from_input(&input, flags)
+    }
+
+    /// As [`Context::import_signatures`], over a caller-built [`Input`].
+    pub fn import_signatures_from_input(&self, input: &Input, flags: u32) -> Result<String> {
         call_for_string(|raw| unsafe {
             ffi::rnp_import_signatures(self.ffi, input.as_ptr(), flags, raw)
         })

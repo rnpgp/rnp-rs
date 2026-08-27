@@ -56,7 +56,14 @@ pub struct Encryptor<'a> {
 impl<'a> Encryptor<'a> {
     /// Begin building an encryption operation over `plaintext`.
     pub fn new(ctx: &'a Context, plaintext: &[u8]) -> Result<Self> {
-        let input = Input::from_memory(plaintext)?;
+        Self::new_with_input(ctx, Input::from_memory(plaintext)?)
+    }
+
+    /// Begin building an encryption operation over a caller-built
+    /// [`Input`] — e.g. from [`Input::from_reader`](crate::Input::from_reader)
+    /// to stream from a non-seekable source. The input is consumed when the
+    /// operation executes.
+    pub fn new_with_input(ctx: &'a Context, input: Input) -> Result<Self> {
         Ok(Encryptor {
             ctx,
             input,
@@ -194,7 +201,7 @@ impl<'a> Encryptor<'a> {
     }
 
     /// Execute the encryption, writing the ciphertext to `output`.
-    pub fn build(self, output: &mut Output) -> Result<()> {
+    pub fn build(mut self, output: &mut Output) -> Result<()> {
         let mut op: ffi::rnp_op_encrypt_t = ptr::null_mut();
         unsafe {
             check(ffi::rnp_op_encrypt_create(
@@ -216,6 +223,13 @@ impl<'a> Encryptor<'a> {
         unsafe {
             let exec = check(ffi::rnp_op_encrypt_execute(op));
             let _ = ffi::rnp_op_encrypt_destroy(op);
+            if exec.is_err() {
+                // Surface the underlying stream failure, if any — librnp
+                // only reports a generic RNP_ERROR_READ/WRITE.
+                if let Some(io) = self.input.take_io_error() {
+                    return Err(io.into());
+                }
+            }
             exec?;
         }
         Ok(())

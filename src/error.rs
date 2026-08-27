@@ -24,7 +24,7 @@ use snafu::Snafu;
 /// librnp's stable ABI and will not change without a major version bump.
 ///
 /// Source: `include/rnp/rnp_err.h`.
-mod codes {
+pub(crate) mod codes {
     pub const RNP_SUCCESS: u32 = 0x0000_0000;
 
     // Common (0x10…)

@@ -49,8 +49,20 @@ impl Context {
         bytes: &[u8],
         flags: LoadSaveFlags,
     ) -> Result<()> {
-        let fmt_c = CString::new(format.as_str()).unwrap();
         let input = Input::from_memory(bytes)?;
+        self.load_keys_from_input(format, &input, flags)
+    }
+
+    /// As [`Context::load_keys`], over a caller-built [`Input`] — e.g.
+    /// from [`Input::from_reader`](crate::Input::from_reader) to load key
+    /// material streamed from a file or socket.
+    pub fn load_keys_from_input(
+        &self,
+        format: KeyringFormat,
+        input: &Input,
+        flags: LoadSaveFlags,
+    ) -> Result<()> {
+        let fmt_c = CString::new(format.as_str()).unwrap();
         unsafe {
             check(ffi::rnp_load_keys(
                 self.ffi,
