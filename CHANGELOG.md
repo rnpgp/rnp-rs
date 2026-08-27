@@ -12,6 +12,22 @@ are the detailed audit trail for each feature area.
 
 ### Added
 
+- Audit and complete the librnp FFI surface by @[object]
+- Streaming Input/Output over any std::io::Read/Write by @[object]
+
+### Fixed
+
+- Drop sphincsplus wrappers — symbols removed on librnp main by @[object]
+
+### Other
+
+- Streaming target + fix the harness build by @[object]
+- Make docs.rs build work and clean every rustdoc warning by @[object]
+- Expect empty literal filename in crypto-refresh builds by @[object]
+- Read literal-data fields via file_info, not JSON dump by @[object]
+
+### Added
+
 - fuzz: new streaming target driving the reader/writer C-thunk machinery
   (partial reads, EOF, io-error capture, closer flush/discard, state
   reclamation); the harness itself now actually builds (own workspace
