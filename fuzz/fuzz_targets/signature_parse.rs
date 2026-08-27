@@ -19,9 +19,5 @@ fuzz_target!(|data: &[u8]| {
         Ok(c) => c,
         Err(_) => return,
     };
-    let _ = ctx.load_keys(
-        rnp::KeyringFormat::Gpg,
-        data,
-        rnp::LoadSaveFlags::PUBLIC,
-    );
+    let _ = ctx.load_keys(rnp::KeyringFormat::Gpg, data, rnp::LoadSaveFlags::PUBLIC);
 });

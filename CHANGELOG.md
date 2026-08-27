@@ -12,6 +12,10 @@ are the detailed audit trail for each feature area.
 
 ### Added
 
+- fuzz: new streaming target driving the reader/writer C-thunk machinery
+  (partial reads, EOF, io-error capture, closer flush/discard, state
+  reclamation); the harness itself now actually builds (own workspace
+  root, correct rnp-rs path dependency, excluded from the main workspace)
 - docs.rs now builds `rnp-sys` (and everything depending on it): the build
   script takes a fast path under `DOCS_RS=1` — pregenerated bindings, no
   link discovery, no vendored C build

@@ -3,7 +3,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use rnp::{dearmor_bytes, Output};
+use rnp::{Output, dearmor_bytes};
 
 fuzz_target!(|data: &[u8]| {
     // Convenience function path.

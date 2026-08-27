@@ -29,6 +29,9 @@ include = [
 
 [workspace]
 members = [".", "rnp-src", "rnp-sys"]
+# The cargo-fuzz harness builds outside this workspace (libFuzzer needs its
+# own target triples and flags).
+exclude = ["fuzz"]
 resolver = "2"
 
 [package.metadata.docs.rs]

@@ -13,12 +13,17 @@ cargo install cargo-fuzz
 cargo +nightly fuzz run decrypt -- -max_total_time=60
 
 # Run all targets:
-for t in decrypt verify load_keys dump_packets dearmor; do
+for t in decrypt verify load_keys dump_packets dearmor import_keys signature_parse streaming; do
     cargo +nightly fuzz run "$t" -- -max_total_time=60
 done
 ```
 
 Requires nightly Rust (libFuzzer integration is nightly-only).
+
+`streaming` additionally drives the `Input::from_reader` /
+`Output::to_writer` C-thunk machinery (partial reads, EOF, io-error
+capture, closer flush/discard, state reclamation) against real pipe and
+decrypt paths.
 
 ## What's checked
 
