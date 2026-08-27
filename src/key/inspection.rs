@@ -203,6 +203,65 @@ impl<'ctx> Key<'ctx> {
         call_for_bool(|out| unsafe { ffi::rnp_key_is_locked(self.handle, out) })
     }
 
+    /// True if the key was revoked with a "key compromised" reason code.
+    /// Wraps `rnp_key_is_compromised`. Upstream reports
+    /// `RNP_ERROR_BAD_PARAMETERS` for keys that are not revoked at all;
+    /// that case is reported as `Ok(false)` — the answer to "was it
+    /// compromised?" is simply no.
+    pub fn is_compromised(&self) -> crate::error::Result<bool> {
+        revoked_reason_flag(|out| unsafe { ffi::rnp_key_is_compromised(self.handle, out) })
+    }
+
+    /// True if the key was retired (revocation reason "no longer used").
+    /// Wraps `rnp_key_is_retired`; see [`Self::is_compromised`] for the
+    /// not-revoked mapping.
+    pub fn is_retired(&self) -> crate::error::Result<bool> {
+        revoked_reason_flag(|out| unsafe { ffi::rnp_key_is_retired(self.handle, out) })
+    }
+
+    /// True if the key was superseded (revocation reason "superseded by
+    /// another key"). Wraps `rnp_key_is_superseded`; see
+    /// [`Self::is_compromised`] for the not-revoked mapping.
+    pub fn is_superseded(&self) -> crate::error::Result<bool> {
+        revoked_reason_flag(|out| unsafe { ffi::rnp_key_is_superseded(self.handle, out) })
+    }
+
+    /// The userid string at `idx`, without going through a [`Uid`] handle
+    /// (the handle-returning variant is [`Self::uid_at`]). `None` when
+    /// `idx` is out of range. Wraps `rnp_key_get_uid_at`.
+    ///
+    /// [`Uid`]: crate::Uid
+    pub fn uid_string_at(&self, idx: usize) -> crate::error::Result<Option<String>> {
+        call_for_optional_string(|out| unsafe { ffi::rnp_key_get_uid_at(self.handle, idx, out) })
+    }
+
+    /// The key's direct revocation signature, if the key is revoked.
+    /// Wraps `rnp_key_get_revocation_signature`.
+    pub fn revocation_signature(&self) -> crate::error::Result<Option<crate::Signature<'_>>> {
+        use crate::error::check;
+        let mut handle: ffi::rnp_signature_handle_t = std::ptr::null_mut();
+        unsafe {
+            check(ffi::rnp_key_get_revocation_signature(
+                self.handle,
+                &mut handle,
+            ))?;
+        }
+        if handle.is_null() {
+            Ok(None)
+        } else {
+            Ok(Some(crate::Signature::from_handle(handle)))
+        }
+    }
+
+    /// The SLH-DSA (Sphincs+) parameter string of a PQC key, if any.
+    /// Requires the `pqc` feature. Wraps `rnp_key_sphincsplus_get_param`.
+    #[cfg(feature = "pqc")]
+    pub fn sphincsplus_param(&self) -> crate::error::Result<Option<String>> {
+        call_for_optional_string(|out| unsafe {
+            ffi::rnp_key_sphincsplus_get_param(self.handle, out)
+        })
+    }
+
     pub fn is_protected(&self) -> crate::error::Result<bool> {
         call_for_bool(|out| unsafe { ffi::rnp_key_is_protected(self.handle, out) })
     }
@@ -218,19 +277,11 @@ impl<'ctx> Key<'ctx> {
         call_for_u64(|out| unsafe { ffi::rnp_key_valid_till64(self.handle, out) })
     }
 
-    /// Whether the key's validity window has passed. Compares
-    /// [`Self::valid_till`] against the current Unix time. Returns
-    /// `Ok(false)` for keys that never expire (`u32::MAX` sentinel).
+    /// Whether the key's validity window has passed, as computed by
+    /// librnp itself (accounts for self-signature expiry, not just the
+    /// expiration field). Wraps `rnp_key_is_expired`.
     pub fn is_expired(&self) -> crate::error::Result<bool> {
-        let till = self.valid_till()?;
-        if till == u32::MAX {
-            return Ok(false);
-        }
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs() as u32)
-            .unwrap_or(0);
-        Ok(till < now)
+        call_for_bool(|out| unsafe { ffi::rnp_key_is_expired(self.handle, out) })
     }
 
     // --- protection ------------------------------------------------------
@@ -398,5 +449,25 @@ impl<'ctx> Key<'ctx> {
         call_for_string(|out| unsafe {
             ffi::rnp_key_packets_to_json(self.handle, secret, flags.bits(), out)
         })
+    }
+}
+
+/// Drives an `rnp_key_is_revoked_with_code`-family getter. Upstream returns
+/// `RNP_ERROR_BAD_PARAMETERS` when the key is not revoked at all — the
+/// answer to "was it revoked with this reason?" is then simply false.
+fn revoked_reason_flag<F>(mut f: F) -> crate::error::Result<bool>
+where
+    F: FnMut(*mut bool) -> u32,
+{
+    let mut out = false;
+    let code = f(&mut out);
+    match crate::error::check(code) {
+        Ok(()) => Ok(out),
+        Err(crate::error::Error::Rnp { code: c, .. })
+            if c == crate::error::codes::RNP_ERROR_BAD_PARAMETERS =>
+        {
+            Ok(false)
+        }
+        Err(e) => Err(e),
     }
 }
