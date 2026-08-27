@@ -543,14 +543,23 @@ crate downloads and compiles them all. Source downloads are pure Rust
 (ureq + flate2 + tar), so `curl` and `tar` are not needed on the host.
 
 Build requirements: **C/C++ compiler**, **cmake**, **python3** (for
-Botan's `configure.py`). On Windows, use **MSYS2 UCRT64** (`mingw-w64-ucrt-x86_64-gcc`,
-`cmake`, `make`, `python3`).
+Botan's `configure.py`), and **patch** (applies the librnp 0.18.1
+backport). On Windows, use **MSYS2 UCRT64** (`mingw-w64-ucrt-x86_64-gcc`,
+`cmake`, `make`, `python3`, `patch`).
 
 | Feature combo | librnp | Botan | When to use |
 |---|---|---|---|
-| `vendored` | 0.18.1 (stable tarball) | 3.12.0 (full) | Default — all RFC 9580 algorithms |
-| `vendored` + `pqc` | HEAD (git clone) | 3.12.0 (PQC modules enabled) | ML-KEM / ML-DSA / SLH-DSA signing + encryption |
-| `vendored` + `crypto-refresh` | HEAD (git clone) | 3.12.0 (full) | v6 keys, crypto-refresh algorithm names |
+| `vendored` | 0.18.1 (stable tarball + backports) | 3.13.0 (full) | Default — all RFC 9580 algorithms |
+| `vendored` + `pqc` | HEAD (git clone) | 3.13.0 (PQC modules enabled) | ML-KEM / ML-DSA / SLH-DSA signing + encryption |
+| `vendored` + `crypto-refresh` | HEAD (git clone) | 3.13.0 (full) | v6 keys, crypto-refresh algorithm names |
+
+The 0.18.1 tarball carries one backport:
+`patches/rsa-short-mpi-botan-3.13.patch` in `rnp-src` pads short
+RSA MPIs to the modulus length — without it, Botan 3.13's strict length
+checks reject ~1/256 of random RSA ciphertexts/signatures
+([rnpgp/rnp#2465](https://github.com/rnpgp/rnp/issues/2465); fixed
+upstream by rnpgp/rnp@82283888, backported here until a librnp release
+carries it).
 
 PQC/crypto-refresh use librnp HEAD because 0.18.1's PQC code paths are
 incompatible with Botan 3.12's opaque EC types.
@@ -592,10 +601,9 @@ Recommendations, in order of preference:
 
 1. **System Botan for both** — `rnp` (default, no `vendored`) + `botan`
    (default). One shared `libbotan`, zero duplication.
-2. **Aligned vendored versions** — currently held at Botan 3.12.0
-   (3.13.0 has a decrypt bug with librnp 0.18.1, see #79); once
-   unblocked, the pin tracks `botan-sys`'s so mixed graphs compile the
-   same Botan twice (wasteful, ~10 min extra, but correct).
+2. **Aligned vendored versions** — both vendored paths now build Botan
+   3.13.0, so mixed graphs compile the same Botan twice (wasteful,
+   ~10 min extra, but correct).
 
 To get a loud warning when a duplicate vendored Botan is detected, enable
 the diagnostic feature on `rnp-sys` from your project:

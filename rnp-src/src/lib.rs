@@ -112,12 +112,14 @@ pub fn build() -> Installed {
     }
 
     // --- 5. librnp ---
-    // The install prefix is keyed by flavor: a plain-0.18.1 artifact and a
-    // PQC/crypto-refresh-HEAD artifact have different headers and symbol
-    // sets, so they must never share a cache — building one and then the
-    // other in the same OUT_DIR would reuse a stale librnp.a/header.
+    // The install prefix is keyed by flavor and patch revision: a
+    // plain-0.18.1 artifact and a PQC/crypto-refresh-HEAD artifact have
+    // different headers and symbol sets, and each backport level changes
+    // the built library — they must never share a cache. Building one and
+    // then the other in the same OUT_DIR would reuse a stale
+    // librnp.a/header. b1 = short-RSA-MPI backport for Botan 3.13.
     #[cfg(not(any(feature = "pqc", feature = "crypto-refresh")))]
-    let rnp_prefix = prefix.join("rnp");
+    let rnp_prefix = prefix.join("rnp-0.18.1-b1");
     #[cfg(any(feature = "pqc", feature = "crypto-refresh"))]
     let rnp_prefix = prefix.join("rnp-flavored");
     if !rnp_prefix.join("lib").join("librnp.a").exists() {
@@ -444,7 +446,8 @@ fn build_bzip2(src_dir: &Path, prefix: &Path) {
 // librnp — the final consumer of all deps above.
 // ---------------------------------------------------------------------
 
-/// Download + extract the librnp release tarball (default path).
+/// Download + extract the librnp release tarball (default path), then
+/// apply the backport patches it needs.
 #[cfg(not(any(feature = "pqc", feature = "crypto-refresh")))]
 fn prepare_librnp_release(src_dir: &Path) -> PathBuf {
     let rnp_src = src_dir.join(format!("rnp-v{RNP_VERSION}"));
@@ -454,7 +457,46 @@ fn prepare_librnp_release(src_dir: &Path) -> PathBuf {
         );
         download_and_extract(&url, src_dir);
     }
+    apply_backports(&rnp_src);
     rnp_src
+}
+
+/// Apply `patches/*.patch` (format-patch style) to an extracted release
+/// tree. Idempotent via a stamp file, so a cached extraction from before a
+/// patch was added still gets patched (the paired install-prefix rename in
+/// [`build`] then forces a rebuild of librnp itself).
+#[cfg(not(any(feature = "pqc", feature = "crypto-refresh")))]
+fn apply_backports(rnp_src: &Path) {
+    const STAMP: &str = ".rnp-backports-b1";
+    if rnp_src.join(STAMP).exists() {
+        return;
+    }
+    let patch = include_str!("../patches/rsa-short-mpi-botan-3.13.patch");
+    let status = Command::new("patch")
+        .args(["-p1", "--batch", "--forward"])
+        .current_dir(rnp_src)
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write;
+            child
+                .stdin
+                .as_mut()
+                .expect("piped stdin")
+                .write_all(patch.as_bytes())?;
+            child.wait()
+        });
+    match status {
+        Ok(st) if st.success() => {}
+        Ok(st) => panic!(
+            "rnp-src: backport patch failed with {st};              the extracted librnp {RNP_VERSION} tree may be partially patched"
+        ),
+        Err(e) => panic!(
+            "rnp-src: failed to run `patch` (required to apply librnp backports): {e}.              Install patch (e.g. pacman -S patch on MSYS2, apt-get install patch on Debian)"
+        ),
+    }
+    fs::write(rnp_src.join(STAMP), b"applied\n").expect("write backport stamp");
+    eprintln!("rnp-src: applied backport: pad short RSA MPIs (Botan 3.13, rnpgp/rnp#2465)");
 }
 
 /// Clone librnp HEAD (or the pinned ref) for PQC/crypto-refresh builds.
