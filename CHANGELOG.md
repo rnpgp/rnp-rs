@@ -12,6 +12,23 @@ are the detailed audit trail for each feature area.
 
 ### Added
 
+- FFI surface-parity audit and enforcement: all 293 `rnp.h` functions of
+  librnp 0.18.1 are now accounted for (289 safe call sites + 4 documented
+  equivalents). `tests/ffi_parity.rs` fails CI on any new untracked
+  upstream function; `scripts/parity-audit.sh` prints the audit;
+  `docs/PARITY.md` maps every C function to its Rust surface
+- Keygen one-call shorthands: `generate_key_{rsa,dsa_eg,ec,sm2,25519,ex}`
+- `Key::{is_expired, is_compromised, is_retired, is_superseded,
+  uid_string_at, revocation_signature}` (is_expired now defers to librnp
+  instead of a local approximation; the reason flags report `false` for
+  non-revoked keys, normalizing upstream's `BAD_PARAMETERS`)
+- `Signature::{revoker, error_count, error_at}` (empty revoker normalized
+  to `None`; out-of-range `error_at` to `None`)
+- Op-level `Signer` options: `compression`, `creation_time`,
+  `expiration_time`, `file_name`, `file_mtime`
+- PQC: `Key::sphincsplus_param` / `KeyBuilder::sphincsplus_param` (feature
+  `pqc`)
+
 - Streaming I/O: `Input::from_reader` / `Output::to_writer` bridge any
   `std::io::Read` / `Write` into librnp operations (network streams, pipes,
   large files) without buffering, with panic-safe thunks, io-error

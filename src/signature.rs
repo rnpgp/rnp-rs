@@ -45,6 +45,16 @@ struct SignerSpec {
     expiration_time: Option<u32>,
 }
 
+/// Op-level (non-signature) sign options, applied after the op is created.
+#[derive(Default)]
+struct SignExtras {
+    compression: Option<(crate::algorithm::Compression, u8)>,
+    creation_time: Option<u32>,
+    expiration_time: Option<u32>,
+    file_name: Option<CString>,
+    file_mtime: Option<u32>,
+}
+
 /// Builder over `rnp_op_sign_*`. Unifies inline / detached / cleartext
 /// signing behind one surface — new modes add a [`Mode`] variant, not a
 /// new top-level function.
@@ -72,6 +82,13 @@ pub struct Signer<'a, 'ctx> {
     signers: Vec<SignerSpec>,
     armor: bool,
     default_hash: Hash,
+    /// Op-level literal-data / compression options, applied to the op (not
+    /// to individual signatures). All optional.
+    compression: Option<(crate::algorithm::Compression, u8)>,
+    creation_time: Option<u32>,
+    expiration_time: Option<u32>,
+    file_name: Option<CString>,
+    file_mtime: Option<u32>,
 }
 
 impl<'a, 'ctx> Signer<'a, 'ctx> {
@@ -83,6 +100,11 @@ impl<'a, 'ctx> Signer<'a, 'ctx> {
             signers: Vec::new(),
             armor: false,
             default_hash: Hash::Sha256,
+            compression: None,
+            creation_time: None,
+            expiration_time: None,
+            file_name: None,
+            file_mtime: None,
         }
     }
 
@@ -97,6 +119,11 @@ impl<'a, 'ctx> Signer<'a, 'ctx> {
             signers: Vec::new(),
             armor: false,
             default_hash: Hash::Sha256,
+            compression: None,
+            creation_time: None,
+            expiration_time: None,
+            file_name: None,
+            file_mtime: None,
         }
     }
 
@@ -155,6 +182,44 @@ impl<'a, 'ctx> Signer<'a, 'ctx> {
         self
     }
 
+    /// Compress the signed message with `alg` at `level` (0..=9). Inline
+    /// and cleartext modes only; ignored for detached signatures. Wraps
+    /// `rnp_op_sign_set_compression`.
+    pub fn compression(mut self, alg: crate::algorithm::Compression, level: u8) -> Self {
+        self.compression = Some((alg, level));
+        self
+    }
+
+    /// Override the signature creation time (Unix seconds) for the whole
+    /// op. Wraps `rnp_op_sign_set_creation_time`; per-signer values set via
+    /// [`Self::add_signer_with_options`] take precedence.
+    pub fn creation_time(mut self, t: u32) -> Self {
+        self.creation_time = Some(t);
+        self
+    }
+
+    /// Set the signature expiration time (Unix seconds) for the whole op.
+    /// Wraps `rnp_op_sign_set_expiration_time`; per-signer values set via
+    /// [`Self::add_signer_with_options`] take precedence.
+    pub fn expiration_time(mut self, t: u32) -> Self {
+        self.expiration_time = Some(t);
+        self
+    }
+
+    /// Set the literal-data packet's file name. Wraps
+    /// `rnp_op_sign_set_file_name`.
+    pub fn file_name(mut self, name: impl AsRef<str>) -> Self {
+        self.file_name = Some(CString::new(name.as_ref()).unwrap_or_default());
+        self
+    }
+
+    /// Set the literal-data packet's file modification time (Unix seconds).
+    /// Wraps `rnp_op_sign_set_file_mtime`.
+    pub fn file_mtime(mut self, t: u32) -> Self {
+        self.file_mtime = Some(t);
+        self
+    }
+
     /// Execute the signing operation, writing the output to `output`.
     ///
     /// If a reader-backed message input fails mid-operation, the returned
@@ -165,12 +230,20 @@ impl<'a, 'ctx> Signer<'a, 'ctx> {
             return Err(crate::error::Error::NullPointer);
         }
         let mut input = self.source.into_input()?;
+        let extras = SignExtras {
+            compression: self.compression,
+            creation_time: self.creation_time,
+            expiration_time: self.expiration_time,
+            file_name: self.file_name,
+            file_mtime: self.file_mtime,
+        };
         let result = Self::execute(
             self.ctx,
             &self.mode,
             &self.signers,
             self.armor,
             self.default_hash,
+            &extras,
             input.as_ptr(),
             output.as_ptr(),
         );
@@ -187,12 +260,20 @@ impl<'a, 'ctx> Signer<'a, 'ctx> {
         }
         let mut input = self.source.into_input()?;
         let output = Output::to_memory()?;
+        let extras = SignExtras {
+            compression: self.compression,
+            creation_time: self.creation_time,
+            expiration_time: self.expiration_time,
+            file_name: self.file_name,
+            file_mtime: self.file_mtime,
+        };
         let result = Self::execute(
             self.ctx,
             &self.mode,
             &self.signers,
             self.armor,
             self.default_hash,
+            &extras,
             input.as_ptr(),
             output.as_ptr(),
         );
@@ -207,6 +288,7 @@ impl<'a, 'ctx> Signer<'a, 'ctx> {
         signers: &[SignerSpec],
         armor: bool,
         default_hash: Hash,
+        extras: &SignExtras,
         input: ffi::rnp_input_t,
         output: ffi::rnp_output_t,
     ) -> Result<()> {
@@ -249,6 +331,23 @@ impl<'a, 'ctx> Signer<'a, 'ctx> {
             let hash_c = CString::new(default_hash.as_str()).unwrap();
             let _ = ffi::rnp_op_sign_set_hash(op, hash_c.as_ptr());
             let _ = ffi::rnp_op_sign_set_armor(op, armor);
+
+            if let Some((alg, level)) = extras.compression {
+                let c = CString::new(alg.as_str()).unwrap();
+                let _ = ffi::rnp_op_sign_set_compression(op, c.as_ptr(), level as i32);
+            }
+            if let Some(t) = extras.creation_time {
+                let _ = ffi::rnp_op_sign_set_creation_time(op, t);
+            }
+            if let Some(t) = extras.expiration_time {
+                let _ = ffi::rnp_op_sign_set_expiration_time(op, t);
+            }
+            if let Some(name) = &extras.file_name {
+                let _ = ffi::rnp_op_sign_set_file_name(op, name.as_ptr());
+            }
+            if let Some(t) = extras.file_mtime {
+                let _ = ffi::rnp_op_sign_set_file_mtime(op, t);
+            }
 
             let exec_res = check(ffi::rnp_op_sign_execute(op));
             let _ = ffi::rnp_op_sign_destroy(op);

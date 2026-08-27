@@ -48,6 +48,10 @@ pub struct KeyBuilder {
     pub(crate) subkeys: Vec<SubkeyBuilder>,
     #[cfg(feature = "crypto-refresh")]
     pub(crate) v6: bool,
+    /// SLH-DSA (Sphincs+) parameter string, e.g. "sphincs-plus-sha2-128s".
+    /// Only meaningful when the algorithm is an SLH-DSA composite.
+    #[cfg(feature = "pqc")]
+    pub(crate) sphincsplus_param: Option<CString>,
 }
 
 impl KeyBuilder {
@@ -70,6 +74,8 @@ impl KeyBuilder {
             subkeys: Vec::new(),
             #[cfg(feature = "crypto-refresh")]
             v6: false,
+            #[cfg(feature = "pqc")]
+            sphincsplus_param: None,
         }
     }
 
@@ -123,26 +129,33 @@ impl KeyBuilder {
         self
     }
 
-    /// Clear all key usage flags. Wraps `rnp_op_generate_clear_usage`.
+    /// Clear all key usage flags. Equivalent to
+    /// `rnp_op_generate_clear_usage`: the builder defers every setter to
+    /// build time, so clearing the local vector is exactly the C-side
+    /// clear.
     pub fn clear_usage(mut self) -> Self {
         self.usages.clear();
         self
     }
 
-    /// Clear all preferred hashes. Wraps `rnp_op_generate_clear_pref_hash`.
+    /// Clear all preferred hashes. Equivalent to
+    /// `rnp_op_generate_clear_pref_hash` (see [`Self::clear_usage`] for why
+    /// the local vector is cleared instead of the C-side state).
     pub fn clear_pref_hash(mut self) -> Self {
         self.pref_hashes.clear();
         self
     }
 
-    /// Clear all preferred ciphers. Wraps `rnp_op_generate_clear_pref_cipher`.
+    /// Clear all preferred ciphers. Equivalent to
+    /// `rnp_op_generate_clear_pref_cipher` (see [`Self::clear_usage`]).
     pub fn clear_pref_cipher(mut self) -> Self {
         self.pref_ciphers.clear();
         self
     }
 
     /// Clear all preferred compressions.
-    /// Wraps `rnp_op_generate_clear_pref_compression`.
+    /// Equivalent to `rnp_op_generate_clear_pref_compression`
+    /// (see [`Self::clear_usage`]).
     pub fn clear_pref_compression(mut self) -> Self {
         self.pref_compressions.clear();
         self
@@ -199,6 +212,15 @@ impl KeyBuilder {
     /// ```
     pub fn add_subkey(mut self, sub: SubkeyBuilder) -> Self {
         self.subkeys.push(sub);
+        self
+    }
+
+    /// Set the SLH-DSA (Sphincs+) parameter for the primary key, e.g.
+    /// `"sphincs-plus-sha2-128s"`. Requires the `pqc` Cargo feature and an
+    /// SLH-DSA algorithm. Wraps `rnp_op_generate_set_sphincsplus_param`.
+    #[cfg(feature = "pqc")]
+    pub fn sphincsplus_param(mut self, param: impl AsRef<str>) -> Self {
+        self.sphincsplus_param = Some(CString::new(param.as_ref()).unwrap_or_default());
         self
     }
 
@@ -296,6 +318,13 @@ unsafe fn apply_setters(op: ffi::rnp_op_generate_t, b: &KeyBuilder) -> Result<()
         for cz in &b.pref_compressions {
             let c = CString::new(cz.as_str()).unwrap();
             check(ffi::rnp_op_generate_add_pref_compression(op, c.as_ptr()))?;
+        }
+        #[cfg(feature = "pqc")]
+        if let Some(param) = &b.sphincsplus_param {
+            check(ffi::rnp_op_generate_set_sphincsplus_param(
+                op,
+                param.as_ptr(),
+            ))?;
         }
         if let Some(ks) = &b.pref_keyserver {
             let c = CString::new(ks.as_str()).map_err(|_| error::Error::NulByte)?;
