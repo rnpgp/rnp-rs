@@ -253,15 +253,6 @@ impl<'ctx> Key<'ctx> {
         }
     }
 
-    /// The SLH-DSA (Sphincs+) parameter string of a PQC key, if any.
-    /// Requires the `pqc` feature. Wraps `rnp_key_sphincsplus_get_param`.
-    #[cfg(feature = "pqc")]
-    pub fn sphincsplus_param(&self) -> crate::error::Result<Option<String>> {
-        call_for_optional_string(|out| unsafe {
-            ffi::rnp_key_sphincsplus_get_param(self.handle, out)
-        })
-    }
-
     pub fn is_protected(&self) -> crate::error::Result<bool> {
         call_for_bool(|out| unsafe { ffi::rnp_key_is_protected(self.handle, out) })
     }

@@ -48,10 +48,6 @@ pub struct KeyBuilder {
     pub(crate) subkeys: Vec<SubkeyBuilder>,
     #[cfg(feature = "crypto-refresh")]
     pub(crate) v6: bool,
-    /// SLH-DSA (Sphincs+) parameter string, e.g. "sphincs-plus-sha2-128s".
-    /// Only meaningful when the algorithm is an SLH-DSA composite.
-    #[cfg(feature = "pqc")]
-    pub(crate) sphincsplus_param: Option<CString>,
 }
 
 impl KeyBuilder {
@@ -74,8 +70,6 @@ impl KeyBuilder {
             subkeys: Vec::new(),
             #[cfg(feature = "crypto-refresh")]
             v6: false,
-            #[cfg(feature = "pqc")]
-            sphincsplus_param: None,
         }
     }
 
@@ -215,15 +209,6 @@ impl KeyBuilder {
         self
     }
 
-    /// Set the SLH-DSA (Sphincs+) parameter for the primary key, e.g.
-    /// `"sphincs-plus-sha2-128s"`. Requires the `pqc` Cargo feature and an
-    /// SLH-DSA algorithm. Wraps `rnp_op_generate_set_sphincsplus_param`.
-    #[cfg(feature = "pqc")]
-    pub fn sphincsplus_param(mut self, param: impl AsRef<str>) -> Self {
-        self.sphincsplus_param = Some(CString::new(param.as_ref()).unwrap_or_default());
-        self
-    }
-
     /// Add a PQC encryption subkey (e.g. ML-KEM-768+X25519).
     /// Requires the `pqc` Cargo feature.
     #[cfg(feature = "pqc")]
@@ -318,13 +303,6 @@ unsafe fn apply_setters(op: ffi::rnp_op_generate_t, b: &KeyBuilder) -> Result<()
         for cz in &b.pref_compressions {
             let c = CString::new(cz.as_str()).unwrap();
             check(ffi::rnp_op_generate_add_pref_compression(op, c.as_ptr()))?;
-        }
-        #[cfg(feature = "pqc")]
-        if let Some(param) = &b.sphincsplus_param {
-            check(ffi::rnp_op_generate_set_sphincsplus_param(
-                op,
-                param.as_ptr(),
-            ))?;
         }
         if let Some(ks) = &b.pref_keyserver {
             let c = CString::new(ks.as_str()).map_err(|_| error::Error::NulByte)?;
