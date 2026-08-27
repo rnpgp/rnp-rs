@@ -185,8 +185,19 @@ fn signer_op_level_options_land_in_packets() {
         .file_info()
         .expect("file info")
         .expect("literal data present");
-    assert_eq!(info.name, "notes.txt", "op-level file name");
-    assert_eq!(info.mtime, 1_700_000_000, "op-level file mtime");
+    #[cfg(not(feature = "crypto-refresh"))]
+    {
+        assert_eq!(info.name, "notes.txt", "op-level file name");
+        assert_eq!(info.mtime, 1_700_000_000, "op-level file mtime");
+    }
+    // RFC 9580: literal-data filename and timestamp SHOULD NOT be set.
+    // librnp built with ENABLE_CRYPTO_REFRESH deliberately omits them, so
+    // the op-level setters succeed but the literal header stays empty.
+    #[cfg(feature = "crypto-refresh")]
+    {
+        let _ = &info;
+        assert!(info.name.is_empty(), "crypto-refresh build omits the name");
+    }
 }
 
 #[test]
