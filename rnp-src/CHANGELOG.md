@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Backport RSA short-MPI padding; unpin Botan to 3.13.0 by @[object]
+
 ### Other
 
 - Make docs.rs build work and clean every rustdoc warning by @[object]

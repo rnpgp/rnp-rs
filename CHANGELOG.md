@@ -10,6 +10,10 @@ are the detailed audit trail for each feature area.
 
 ## [Unreleased]
 
+### Fixed
+
+- Backport RSA short-MPI padding; unpin Botan to 3.13.0 by @[object]
+
 ### Added
 
 - Audit and complete the librnp FFI surface by @[object]
