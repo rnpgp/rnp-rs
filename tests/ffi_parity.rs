@@ -41,6 +41,19 @@ const EXCLUDED: &[(&str, &str)] = &[
         "rnp_op_generate_clear_usage",
         "equivalent: KeyBuilder::clear_usage clears the local vector",
     ),
+    // Present in the 0.18.1 headers, removed on main. The pqc/crypto-refresh
+    // features compile librnp from HEAD, where these symbols no longer
+    // exist, so wrappers for them cannot be compiled for that flavor.
+    // SLH-DSA parameter sets are selected via the SLH-DSA-SHA2-* algorithm
+    // names instead.
+    (
+        "rnp_key_sphincsplus_get_param",
+        "removed on librnp main; 0.18.1-only experimental surface",
+    ),
+    (
+        "rnp_op_generate_set_sphincsplus_param",
+        "removed on librnp main; 0.18.1-only experimental surface",
+    ),
 ];
 
 /// First `bindings-*.rs` under `rnp-sys/bindings/` (the filename carries
