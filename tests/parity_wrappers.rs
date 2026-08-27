@@ -10,7 +10,7 @@ use rnp::keygen::{
     generate_key_25519, generate_key_dsa_eg, generate_key_ec, generate_key_ex, generate_key_rsa,
     generate_key_sm2,
 };
-use rnp::{Context, ErrorKind, JsonDumpFlags, Mode, Signer, dump_packets_bytes_to_json};
+use rnp::{Context, ErrorKind, Mode, Signer};
 
 /// Current Unix time. A signature whose creation time pre-dates its key
 /// does not verify, so call this *after* building the test key.
@@ -174,19 +174,19 @@ fn signer_op_level_options_land_in_packets() {
         .build_to_memory()
         .expect("sign");
 
-    let json = dump_packets_bytes_to_json(&signed, JsonDumpFlags::MPI).expect("dump");
-    assert!(json.contains("notes.txt"), "literal-data file name missing");
-    assert!(
-        json.contains("\"algorithm.str\":\"ZLib\""),
-        "compressed-data packet missing: first 200 chars: {}",
-        &json[..json.len().min(200)]
-    );
-
+    // Read the literal-data packet fields back through the verify path —
+    // stable across librnp versions (the JSON dump's field naming is not).
     let result = rnp::verify(&ctx, &signed).expect("verify");
     let sig = &result.signatures().expect("sigs")[0];
     let (sig_creation, sig_expiration) = sig.times().expect("times");
     assert_eq!(sig_creation, creation, "op-level creation time");
     assert_eq!(sig_expiration, 86_400, "op-level expiration time");
+    let info = result
+        .file_info()
+        .expect("file info")
+        .expect("literal data present");
+    assert_eq!(info.name, "notes.txt", "op-level file name");
+    assert_eq!(info.mtime, 1_700_000_000, "op-level file mtime");
 }
 
 #[test]
