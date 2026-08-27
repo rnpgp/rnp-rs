@@ -113,10 +113,13 @@
 //!
 //! ## Status
 //!
-//! This crate wraps ~250 of librnp's ~309 public functions across all
-//! major OpenPGP concerns. See the per-phase TODO files in
+//! This crate exercises **all 293 public functions** librnp 0.18.1
+//! declares in `rnp.h` (4 as documented equivalents; see
+//! [`docs/PARITY.md`](https://github.com/rnpgp/rnp-rs/blob/main/docs/PARITY.md)
+//! for the per-function mapping and the audit that keeps it true). The
+//! per-phase TODO files in
 //! [`TODO.roadmap`](https://github.com/rnpgp/rnp-rs/tree/main/TODO.roadmap)
-//! for the full status matrix.
+//! remain the build history.
 //!
 //! ## Linking
 //!
@@ -173,7 +176,10 @@ pub use key_signature_builder::{
     CertificationBuilder, ConfiguredBuilder, DirectSignatureBuilder, RevocationSignatureBuilder,
     SignatureSetterOps,
 };
-pub use keygen::{KeyBuilder, SubkeyBuilder, generate_key_json};
+pub use keygen::{
+    KeyBuilder, SubkeyBuilder, generate_key_25519, generate_key_dsa_eg, generate_key_ec,
+    generate_key_ex, generate_key_json, generate_key_rsa, generate_key_sm2,
+};
 pub use keyring::{IdentifierIterator, IdentifierKind};
 pub use ops::{
     ArmorType, Input, Output, OutputFileFlags, WriterOutcome, call_for_optional_string,

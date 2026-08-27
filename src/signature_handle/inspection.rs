@@ -101,6 +101,39 @@ impl<'parent> Signature<'parent> {
         })
     }
 
+    /// The designated revoker recorded in this signature's revocation-key
+    /// subpacket, if any. Wraps `rnp_signature_get_revoker`; upstream
+    /// returns an empty string for signatures without a revoker, which is
+    /// normalized to `None` here.
+    pub fn revoker(&self) -> Result<Option<String>> {
+        let raw = call_for_optional_string(|out| unsafe {
+            ffi::rnp_signature_get_revoker(self.handle, out)
+        })?;
+        Ok(raw.filter(|s| !s.is_empty()))
+    }
+
+    /// Number of validation errors recorded for this signature.
+    /// Wraps `rnp_signature_error_count`.
+    pub fn error_count(&self) -> Result<usize> {
+        call_for_usize(|out| unsafe { ffi::rnp_signature_error_count(self.handle, out) })
+    }
+
+    /// The raw `rnp_result_t` validation error at `idx`. `None` when `idx`
+    /// is out of range. Pair with
+    /// [`Error::from_rnp_code`](crate::Error::from_rnp_code) /
+    /// [`rnp_result_to_string`](crate::version::result_to_string) for a
+    /// readable form. Wraps `rnp_signature_error_at`.
+    pub fn error_at(&self, idx: usize) -> Result<Option<u32>> {
+        // Upstream signals an out-of-range index with BAD_PARAMETERS;
+        // bounds-check against the count first so `None` is the answer.
+        if idx >= self.error_count()? {
+            return Ok(None);
+        }
+        let mut code: ffi::rnp_result_t = 0;
+        unsafe { check(ffi::rnp_signature_error_at(self.handle, idx, &mut code))? };
+        Ok(Some(code as u32))
+    }
+
     /// Key server preferences bitmask.
     pub fn key_server_prefs(&self) -> Result<u32> {
         call_for_u32(|out| unsafe { ffi::rnp_signature_get_key_server_prefs(self.handle, out) })

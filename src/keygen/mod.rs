@@ -30,9 +30,14 @@ pub use crate::algorithm::{Algorithm, Cipher, Compression, Curve, Hash, KeyUsage
 pub use crate::algorithm::{PqcAlgorithm, librnp_supports_pqc};
 
 pub(crate) mod primary;
+pub(crate) mod shorthand;
 pub(crate) mod subkey;
 
 pub use primary::KeyBuilder;
+pub use shorthand::{
+    generate_key_25519, generate_key_dsa_eg, generate_key_ec, generate_key_ex, generate_key_rsa,
+    generate_key_sm2,
+};
 pub use subkey::SubkeyBuilder;
 
 // ---------------------------------------------------------------------------
