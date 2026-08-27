@@ -18,10 +18,10 @@ Against **librnp 0.18.1**:
 |------------|-------|
 | declared   | 293   |
 | bound      | 293   |
-| exercised  | 289   |
-| excluded (documented below) | 4 |
+| exercised  | 287   |
+| excluded (documented below) | 6 |
 
-Every function is accounted for: 289 have a safe call site, 4 are
+Every function is accounted for: 287 have a safe call site, 6 are
 consciously excluded with reasons. Callback *typedefs*
 (`rnp_input_reader_t`, `rnp_input_closer_t`, `rnp_output_writer_t`,
 `rnp_output_closer_t`) are implemented as C thunks in
@@ -46,6 +46,8 @@ consciously excluded with reasons. Callback *typedefs*
 | `rnp_op_generate_clear_pref_hashes` | Same: `KeyBuilder::clear_pref_hash`. |
 | `rnp_op_generate_clear_pref_ciphers` | Same: `KeyBuilder::clear_pref_cipher`. |
 | `rnp_op_generate_clear_pref_compression` | Same: `KeyBuilder::clear_pref_compression`. |
+| `rnp_key_sphincsplus_get_param` | Removed on librnp main; exists only in 0.18.1's experimental PQC surface. The `pqc`/`crypto-refresh` features compile librnp from HEAD, where the symbol no longer exists, so a wrapper could not be built for that flavor. SLH-DSA parameter sets are chosen via the `SLH-DSA-SHA2-*` algorithm names. |
+| `rnp_op_generate_set_sphincsplus_param` | Same as above. |
 
 ## Where to find each C function in Rust
 
@@ -76,7 +78,6 @@ consciously excluded with reasons. Callback *typedefs*
 | `rnp_calculate_iterations`, `rnp_set_timestamp`, `rnp_request_password` | `security::calculate_iterations`, `set_timestamp`, `request_password` |
 | `rnp_supported_features`, `rnp_supports_feature` | `supported_features`, `supports_feature` |
 
-PQC-only entry points (`rnp_key_sphincsplus_get_param`,
-`rnp_op_generate_set_sphincsplus_param`,
-`rnp_op_encrypt_prefer_pqc_enc_subkey`) are gated behind the `pqc` Cargo
-feature, mirroring upstream's `RNP_EXPERIMENTAL_PQC` build gate.
+PQC-only entry points (e.g. `rnp_op_encrypt_prefer_pqc_enc_subkey`) are
+gated behind the `pqc` Cargo feature, mirroring upstream's
+`RNP_EXPERIMENTAL_PQC` build gate.
