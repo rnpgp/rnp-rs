@@ -36,12 +36,23 @@ impl std::ops::BitOr for VerifyFlags {
 /// Builder over `rnp_op_verify_*`. Construct for inline or detached
 /// verification, optionally set flags, then call [`VerifyOp::execute`] to
 /// obtain a [`VerifyResult`].
+///
+/// ## Handle ownership
+///
+/// Upstream does **not** destroy an op's inputs or output —
+/// `~rnp_op_verify_st` frees only its recipient/symenc bookkeeping, and the
+/// canonical C examples destroy the op first and the streams after. This
+/// builder therefore owns the inputs and the output itself, hands them to
+/// [`VerifyResult`] on success, and destroys them in the canonical order
+/// (op first, then streams) on every path, including drops without
+/// [`VerifyOp::execute`].
 pub struct VerifyOp<'ctx> {
     ctx: &'ctx Context,
     op: ffi::rnp_op_verify_t,
-    _input: Input,
-    // Output kept around so it lives until execute() flushes it.
-    _output: Output,
+    /// The message input, plus the detached-signature input when detached.
+    inputs: Vec<Input>,
+    // Kept alive so it outlives the op, mirroring the C examples.
+    _output: Option<Output>,
     _phantom: PhantomData<&'ctx ()>,
 }
 
@@ -50,7 +61,13 @@ impl<'ctx> VerifyOp<'ctx> {
     /// by inline signing; `output` is where the embedded plaintext will be
     /// written (use `Output::to_null()` to discard).
     pub fn inline(ctx: &'ctx Context, signed_message: &[u8], output: Output) -> Result<Self> {
-        let input = Input::from_memory(signed_message)?;
+        Self::inline_with_input(ctx, Input::from_memory(signed_message)?, output)
+    }
+
+    /// As [`VerifyOp::inline`], over a caller-built [`Input`] — e.g. from
+    /// [`Input::from_reader`](crate::Input::from_reader) to verify a
+    /// streamed message. The input is consumed when the op executes.
+    pub fn inline_with_input(ctx: &'ctx Context, input: Input, output: Output) -> Result<Self> {
         let mut op: ffi::rnp_op_verify_t = ptr::null_mut();
         unsafe {
             check(ffi::rnp_op_verify_create(
@@ -63,8 +80,8 @@ impl<'ctx> VerifyOp<'ctx> {
         Ok(VerifyOp {
             ctx,
             op,
-            _input: input,
-            _output: output,
+            inputs: vec![input],
+            _output: Some(output),
             _phantom: PhantomData,
         })
     }
@@ -72,27 +89,37 @@ impl<'ctx> VerifyOp<'ctx> {
     /// Begin detached verification. `signature` is the detached signature
     /// over `message`.
     pub fn detached(ctx: &'ctx Context, message: &[u8], signature: &[u8]) -> Result<Self> {
-        let msg_input = Input::from_memory(message)?;
-        let sig_input = Input::from_memory(signature)?;
+        Self::detached_with_input(
+            ctx,
+            Input::from_memory(message)?,
+            Input::from_memory(signature)?,
+        )
+    }
+
+    /// As [`VerifyOp::detached`], over caller-built [`Input`]s — e.g. from
+    /// [`Input::from_reader`](crate::Input::from_reader) to verify a
+    /// streamed message or signature. Both inputs are consumed when the op
+    /// executes.
+    pub fn detached_with_input(
+        ctx: &'ctx Context,
+        message: Input,
+        signature: Input,
+    ) -> Result<Self> {
         let null_out = Output::to_null()?;
         let mut op: ffi::rnp_op_verify_t = ptr::null_mut();
         unsafe {
             check(ffi::rnp_op_verify_detached_create(
                 &mut op,
                 ctx.ffi,
-                msg_input.as_ptr(),
-                sig_input.as_ptr(),
+                message.as_ptr(),
+                signature.as_ptr(),
             ))?;
         }
-        // The op destroys both inputs via rnp_op_verify_destroy. We forget
-        // sig_input so our Drop doesn't double-free; msg_input is kept
-        // alive by self._input.
-        std::mem::forget(sig_input);
         Ok(VerifyOp {
             ctx,
             op,
-            _input: msg_input,
-            _output: null_out,
+            inputs: vec![message, signature],
+            _output: Some(null_out),
             _phantom: PhantomData,
         })
     }
@@ -102,14 +129,45 @@ impl<'ctx> VerifyOp<'ctx> {
     }
 
     /// Execute the verification, returning the result for inspection.
-    pub fn execute(self) -> Result<VerifyResult<'ctx>> {
-        unsafe {
-            check(ffi::rnp_op_verify_execute(self.op))?;
+    /// Ownership of the op's inputs and output moves into the result so
+    /// the streams outlive the op handle.
+    ///
+    /// If a reader-backed input fails mid-verification, the returned error
+    /// is the original [`std::io::Error`] rather than librnp's generic
+    /// read/write code.
+    pub fn execute(mut self) -> Result<VerifyResult<'ctx>> {
+        let exec = unsafe { check(ffi::rnp_op_verify_execute(self.op)) };
+        if let Err(e) = exec {
+            if let Some(io) = self
+                .inputs
+                .iter_mut()
+                .find_map(|input| input.take_io_error())
+            {
+                return Err(io.into());
+            }
+            return Err(e);
         }
-        Ok(VerifyResult {
+        let result = VerifyResult {
             ctx: self.ctx,
-            op: self.op,
+            op: std::mem::replace(&mut self.op, ptr::null_mut()),
+            _inputs: std::mem::take(&mut self.inputs),
+            _output: self._output.take(),
             _phantom: PhantomData,
-        })
+        };
+        Ok(result)
+    }
+}
+
+impl Drop for VerifyOp<'_> {
+    fn drop(&mut self) {
+        if !self.op.is_null() {
+            // SAFETY: op was created by rnp_op_verify_*_create and not yet
+            // destroyed. Destroying it first matches the canonical C
+            // ordering; the input/output fields drop afterwards.
+            unsafe {
+                let _ = ffi::rnp_op_verify_destroy(self.op);
+            }
+            self.op = ptr::null_mut();
+        }
     }
 }

@@ -15,7 +15,7 @@ use crate::context::Context;
 use crate::error::{Result, check};
 use crate::ffi;
 use crate::key::Key;
-use crate::ops::{Input, Output};
+use crate::ops::{ByteSource, Input, Output, or_stream_error};
 use crate::verify::{VerifyOp, VerifyResult};
 use std::ffi::CString;
 use std::ptr;
@@ -67,7 +67,7 @@ struct SignerSpec {
 /// ```
 pub struct Signer<'a, 'ctx> {
     ctx: &'ctx Context,
-    message: &'a [u8],
+    source: ByteSource<'a>,
     mode: Mode,
     signers: Vec<SignerSpec>,
     armor: bool,
@@ -78,7 +78,21 @@ impl<'a, 'ctx> Signer<'a, 'ctx> {
     pub fn new(ctx: &'ctx Context, message: &'a [u8], mode: Mode) -> Self {
         Signer {
             ctx,
-            message,
+            source: ByteSource::Bytes(message),
+            mode,
+            signers: Vec::new(),
+            armor: false,
+            default_hash: Hash::Sha256,
+        }
+    }
+
+    /// Begin signing over a caller-built [`Input`] — e.g. from
+    /// [`Input::from_reader`] to stream from a non-seekable source. The
+    /// input is consumed when the operation executes.
+    pub fn new_with_input(ctx: &'ctx Context, input: Input, mode: Mode) -> Self {
+        Signer {
+            ctx,
+            source: ByteSource::Owned(input),
             mode,
             signers: Vec::new(),
             armor: false,
@@ -142,46 +156,69 @@ impl<'a, 'ctx> Signer<'a, 'ctx> {
     }
 
     /// Execute the signing operation, writing the output to `output`.
+    ///
+    /// If a reader-backed message input fails mid-operation, the returned
+    /// error is the original [`std::io::Error`] (see
+    /// [`Input::from_reader`](crate::Input::from_reader)).
     pub fn build(self, output: &mut Output) -> Result<()> {
         if self.signers.is_empty() {
             return Err(crate::error::Error::NullPointer);
         }
-        let input = Input::from_memory(self.message)?;
-        self.execute(input.as_ptr(), output.as_ptr())
+        let mut input = self.source.into_input()?;
+        let result = Self::execute(
+            self.ctx,
+            &self.mode,
+            &self.signers,
+            self.armor,
+            self.default_hash,
+            input.as_ptr(),
+            output.as_ptr(),
+        );
+        or_stream_error(result, &mut input)
     }
 
     /// Execute the signing operation, returning the output bytes.
+    ///
+    /// Stream failures surface as the original [`std::io::Error`], as in
+    /// [`Signer::build`].
     pub fn build_to_memory(self) -> Result<Vec<u8>> {
         if self.signers.is_empty() {
             return Err(crate::error::Error::NullPointer);
         }
-        let input = Input::from_memory(self.message)?;
+        let mut input = self.source.into_input()?;
         let output = Output::to_memory()?;
-        self.execute(input.as_ptr(), output.as_ptr())?;
+        let result = Self::execute(
+            self.ctx,
+            &self.mode,
+            &self.signers,
+            self.armor,
+            self.default_hash,
+            input.as_ptr(),
+            output.as_ptr(),
+        );
+        or_stream_error(result, &mut input)?;
         output.into_bytes()
     }
 
-    fn execute(self, input: ffi::rnp_input_t, output: ffi::rnp_output_t) -> Result<()> {
+    #[allow(clippy::too_many_arguments)]
+    fn execute(
+        ctx: &Context,
+        mode: &Mode,
+        signers: &[SignerSpec],
+        armor: bool,
+        default_hash: Hash,
+        input: ffi::rnp_input_t,
+        output: ffi::rnp_output_t,
+    ) -> Result<()> {
         let mut op: ffi::rnp_op_sign_t = ptr::null_mut();
         unsafe {
-            let create = match self.mode {
-                Mode::Inline => check(ffi::rnp_op_sign_create(
-                    &mut op,
-                    self.ctx.ffi,
-                    input,
-                    output,
-                )),
+            let create = match mode {
+                Mode::Inline => check(ffi::rnp_op_sign_create(&mut op, ctx.ffi, input, output)),
                 Mode::Detached => check(ffi::rnp_op_sign_detached_create(
-                    &mut op,
-                    self.ctx.ffi,
-                    input,
-                    output,
+                    &mut op, ctx.ffi, input, output,
                 )),
                 Mode::Cleartext => check(ffi::rnp_op_sign_cleartext_create(
-                    &mut op,
-                    self.ctx.ffi,
-                    input,
-                    output,
+                    &mut op, ctx.ffi, input, output,
                 )),
             };
             if let Err(e) = create {
@@ -191,14 +228,14 @@ impl<'a, 'ctx> Signer<'a, 'ctx> {
                 return Err(e);
             }
 
-            for spec in &self.signers {
+            for spec in signers {
                 let mut sig_handle: ffi::rnp_op_sign_signature_t = ptr::null_mut();
                 check(ffi::rnp_op_sign_add_signature(
                     op,
                     spec.handle,
                     &mut sig_handle,
                 ))?;
-                let hash = spec.hash.unwrap_or(self.default_hash);
+                let hash = spec.hash.unwrap_or(default_hash);
                 let hash_c = CString::new(hash.as_str()).unwrap();
                 let _ = ffi::rnp_op_sign_signature_set_hash(sig_handle, hash_c.as_ptr());
                 if let Some(ct) = spec.creation_time {
@@ -209,9 +246,9 @@ impl<'a, 'ctx> Signer<'a, 'ctx> {
                 }
             }
 
-            let hash_c = CString::new(self.default_hash.as_str()).unwrap();
+            let hash_c = CString::new(default_hash.as_str()).unwrap();
             let _ = ffi::rnp_op_sign_set_hash(op, hash_c.as_ptr());
-            let _ = ffi::rnp_op_sign_set_armor(op, self.armor);
+            let _ = ffi::rnp_op_sign_set_armor(op, armor);
 
             let exec_res = check(ffi::rnp_op_sign_execute(op));
             let _ = ffi::rnp_op_sign_destroy(op);

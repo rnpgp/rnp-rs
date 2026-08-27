@@ -11,19 +11,27 @@
 //! module re-exports them for backward compatibility with callers that
 //! import from `crate::ops::*`.
 //!
-//! ## Listener model
+//! ## Streaming
 //!
-//! Callback-based inputs and outputs are deferred to a later phase (they
-//! require careful lifetime design around boxed trait objects). Memory, path,
-//! stdin/stdout, file, null, and armor destinations are all supported here.
+//! Beyond the in-memory / path / stdin-stdout destinations, any
+//! [`std::io::Read`] plugs in via [`Input::from_reader`] and any
+//! [`std::io::Write`] via [`Output::to_writer`], so large or non-seekable
+//! data (network streams, pipes) can be processed without buffering.
+//! Builders that consume a message accept a caller-built [`Input`] through
+//! their `*_with_input` constructors (`Signer::new_with_input`,
+//! `Encryptor::new_with_input`, `VerifyOp::inline_with_input` /
+//! `detached_with_input`, [`decrypt_from_input`](crate::decrypt_from_input)).
+//! See the `stream` sub-module docs for the callback, error, and panic
+//! semantics.
 //!
 //! ## Module layout
 //!
 //! | Sub-module    | Concern                                                |
 //! |---------------|--------------------------------------------------------|
 //! | `input`       | `Input` RAII                                           |
-//! | `output`      | `Output` RAII + `OutputFileFlags`                      |
+//! | `output`      | `Output` RAII + `OutputFileFlags` + `WriterOutcome`    |
 //! | `armor_type`  | `ArmorType` enum                                       |
+//! | `stream`      | Read/Write ↔ librnp callback plumbing                  |
 
 // C-string / buffer return helpers — defined in [`crate::ffi_safe`].
 // Re-exported here for compatibility with existing callers that import from
@@ -35,7 +43,55 @@ pub use crate::ffi_safe::{
 mod armor_type;
 mod input;
 mod output;
+mod stream;
 
 pub use armor_type::ArmorType;
 pub use input::Input;
-pub use output::{Output, OutputFileFlags};
+pub use output::{Output, OutputFileFlags, WriterOutcome};
+
+/// Where an operation gets its message bytes from: either a caller-owned
+/// slice, or a caller-built [`Input`] (e.g. from
+/// [`Input::from_reader`](Input::from_reader)).
+///
+/// Used by the builders that offer both byte-slice and `Input`-taking
+/// constructors, so the streaming path shares the byte path's execution
+/// code exactly.
+pub(crate) enum ByteSource<'a> {
+    Bytes(&'a [u8]),
+    Owned(Input),
+}
+
+impl std::fmt::Debug for ByteSource<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ByteSource::Bytes(bytes) => f.debug_tuple("Bytes").field(bytes).finish(),
+            ByteSource::Owned(_) => f.debug_tuple("Owned").field(&"<input>").finish(),
+        }
+    }
+}
+
+impl ByteSource<'_> {
+    pub(crate) fn into_input(self) -> crate::error::Result<Input> {
+        match self {
+            ByteSource::Bytes(bytes) => Input::from_memory(bytes),
+            ByteSource::Owned(input) => Ok(input),
+        }
+    }
+}
+
+/// When an operation fails on a stream-backed input, prefer the recorded
+/// [`std::io::Error`] over librnp's generic `RNP_ERROR_READ`/`WRITE` code —
+/// the io error says *why* the stream failed. Used by the ops that consume
+/// the input on the Rust side (and therefore can still reach its error
+/// slot at failure time).
+pub(crate) fn or_stream_error<T>(
+    result: crate::error::Result<T>,
+    input: &mut Input,
+) -> crate::error::Result<T> {
+    if result.is_err()
+        && let Some(io) = input.take_io_error()
+    {
+        return Err(io.into());
+    }
+    result
+}

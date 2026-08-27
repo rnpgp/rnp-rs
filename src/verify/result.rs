@@ -5,6 +5,7 @@ use crate::context::Context;
 use crate::error::{self, Result, check};
 use crate::ffi;
 use crate::ffi_safe::{call_for_usize, cstr_to_optional_string, cstr_to_string};
+use crate::ops::{Input, Output};
 use std::marker::PhantomData;
 use std::os::raw::c_char;
 use std::ptr;
@@ -13,9 +14,16 @@ use super::{FileInfo, Recipient, Symenc, VerifySignature};
 
 /// Result of a verify (or decrypt) operation. Owns the verify-op handle
 /// until drop; methods read out the per-signature / per-recipient state.
+///
+/// It also owns the op's inputs and output, moved here by
+/// [`VerifyOp::execute`](super::VerifyOp::execute). `Drop` destroys the op
+/// handle first and the streams after — the canonical upstream ordering —
+/// so nothing the op references is freed early.
 pub struct VerifyResult<'ctx> {
     pub(crate) ctx: &'ctx Context,
     pub(crate) op: ffi::rnp_op_verify_t,
+    pub(crate) _inputs: Vec<Input>,
+    pub(crate) _output: Option<Output>,
     pub(crate) _phantom: PhantomData<&'ctx ()>,
 }
 

@@ -10,8 +10,28 @@ are the detailed audit trail for each feature area.
 
 ## [Unreleased]
 
+### Added
+
+- Streaming I/O: `Input::from_reader` / `Output::to_writer` bridge any
+  `std::io::Read` / `Write` into librnp operations (network streams, pipes,
+  large files) without buffering, with panic-safe thunks, io-error
+  surfacing, and writer discard semantics
+- `*_with_input` constructors (`Signer`, `Encryptor`, `VerifyOp`),
+  `decrypt_from_input`, and `load_keys_from_input` /
+  `import_keys_from_input` / `import_signatures_from_input` for streaming
+  key material
+- `Output::into_writer` / `Input::into_reader` reclaim the stream object;
+  `WriterOutcome` reports flush/discard outcomes
+
 ### Fixed
 
+- Leak: `VerifyOp::detached` forgot the signature input, but upstream never
+  destroys op inputs — the op now owns all streams and destroys them in the
+  canonical order (op first, streams after)
+- `Output::into_bytes` returned `BAD_PARAMETERS` for a memory output with
+  zero bytes written; now yields an empty buffer
+- Doctest executables could not find the Homebrew dylib at runtime
+  (`.cargo/config.toml` now sets `DYLD_LIBRARY_PATH` for rustdoc)
 - Drop gitignored Cargo.lock from include; ship tests/examples/benches by @[object]
 
 ### Added

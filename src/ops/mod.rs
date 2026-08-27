@@ -7,7 +7,9 @@
 
 pub mod io;
 
+pub(crate) use io::ByteSource;
+pub(crate) use io::or_stream_error;
 pub use io::{
-    ArmorType, Input, Output, OutputFileFlags, call_for_optional_string, call_for_string,
-    cstr_to_optional_string, cstr_to_string,
+    ArmorType, Input, Output, OutputFileFlags, WriterOutcome, call_for_optional_string,
+    call_for_string, cstr_to_optional_string, cstr_to_string,
 };

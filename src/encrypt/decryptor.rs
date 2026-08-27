@@ -24,6 +24,24 @@ pub fn decrypt_to(ctx: &Context, ciphertext: &[u8], output: &mut Output) -> Resu
     unsafe { check(ffi::rnp_decrypt(ctx.ffi, input.as_ptr(), output.as_ptr())) }
 }
 
+/// Decrypt a caller-built [`Input`] (e.g. from
+/// [`Input::from_reader`](crate::Input::from_reader)) and write the
+/// plaintext to `output` — the streaming counterpart of [`decrypt_to`].
+///
+/// Unlike [`Decryptor`], this is single-pass: the input is consumed exactly
+/// once, which is what a non-seekable reader can support. If the reader
+/// fails mid-operation, the original [`std::io::Error`] is available via
+/// [`Input::io_error`](crate::Input::io_error).
+pub fn decrypt_from_input(ctx: &Context, ciphertext: &Input, output: &mut Output) -> Result<()> {
+    unsafe {
+        check(ffi::rnp_decrypt(
+            ctx.ffi,
+            ciphertext.as_ptr(),
+            output.as_ptr(),
+        ))
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Decryptor builder + DecryptResult
 // ---------------------------------------------------------------------------
@@ -38,6 +56,10 @@ pub fn decrypt_to(ctx: &Context, ciphertext: &[u8], output: &mut Output) -> Resu
 /// For the simple "just give me the plaintext" case, prefer
 /// [`decrypt`] — it's a thinner wrapper over `rnp_decrypt` and avoids the
 /// verify-op overhead.
+///
+/// `build` consumes the ciphertext twice (see below), so `Decryptor` only
+/// accepts byte slices. To decrypt from a one-shot stream (a reader that
+/// cannot be rewound), use [`decrypt_from_input`] instead.
 ///
 /// ```
 /// # use rnp::{Algorithm, Context, Decryptor, Encryptor, KeyBuilder, KeyUsage};

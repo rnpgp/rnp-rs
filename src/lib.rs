@@ -79,6 +79,29 @@
 //! # Ok::<(), rnp::Error>(())
 //! ```
 //!
+//! ## Streaming
+//!
+//! Any [`std::io::Read`] plugs in via [`Input::from_reader`] and any
+//! [`std::io::Write`] via [`Output::to_writer`], so large or non-seekable
+//! data is processed without buffering it in memory:
+//!
+//! ```no_run
+//! # use rnp::{Context, Decryptor, Encryptor, Input, KeyBuilder, KeyUsage, Output, algorithm::Algorithm};
+//! # let ctx = Context::new()?;
+//! # let key = KeyBuilder::new(Algorithm::Rsa).bits(2048)
+//! #     .userid("enc <enc@example.com>").add_usage(KeyUsage::EncryptComms)
+//! #     .build(&ctx)?;
+//! let input = Input::from_reader(network_stream())?;
+//! let mut output = Output::to_writer(tcp_sink())?;
+//! Encryptor::new_with_input(&ctx, input)?.add_recipient(&key).build(&mut output)?;
+//! # fn network_stream() -> impl std::io::Read { std::io::empty() }
+//! # fn tcp_sink() -> impl std::io::Write { std::io::sink() }
+//! # Ok::<(), rnp::Error>(())
+//! ```
+//!
+//! Readers and writers are read and written lazily while the operation
+//! runs; a failed stream surfaces its original [`std::io::Error`].
+//!
 //! ## Cargo features
 //!
 //! | Feature | Description |
@@ -139,7 +162,7 @@ pub use dump::{
 };
 pub use encrypt::{
     AddPasswordOptions, AeadType, DecryptResult, Decryptor, EncryptFlags, Encryptor, decrypt,
-    decrypt_to,
+    decrypt_from_input, decrypt_to,
 };
 pub use error::{Error, ErrorKind, Result, from_rnp_code, unknown_variant};
 pub use key::{AddUidOptions, ProtectOptions, RevocationCode, RevocationReason};
@@ -153,8 +176,8 @@ pub use key_signature_builder::{
 pub use keygen::{KeyBuilder, SubkeyBuilder, generate_key_json};
 pub use keyring::{IdentifierIterator, IdentifierKind};
 pub use ops::{
-    ArmorType, Input, Output, OutputFileFlags, call_for_optional_string, call_for_string,
-    cstr_to_optional_string, cstr_to_string,
+    ArmorType, Input, Output, OutputFileFlags, WriterOutcome, call_for_optional_string,
+    call_for_string, cstr_to_optional_string, cstr_to_string,
 };
 pub use secret::{SecretString, zero_string_bytes};
 pub use security::{

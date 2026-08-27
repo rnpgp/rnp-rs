@@ -21,8 +21,10 @@ use std::ptr;
 
 use std::ffi::CString;
 
-use rnp_sys::{rnp_buffer_destroy, rnp_ffi_create, rnp_ffi_destroy,
-              rnp_get_default_homedir, rnp_version_string};
+use rnp_sys::{
+    rnp_buffer_destroy, rnp_ffi_create, rnp_ffi_destroy, rnp_get_default_homedir,
+    rnp_version_string,
+};
 
 /// `rnp_version_string()` returns a non-null C string identifying the linked
 /// librnp. The pointer lives for the process lifetime.
