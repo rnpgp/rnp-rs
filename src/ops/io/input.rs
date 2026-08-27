@@ -12,8 +12,8 @@ use super::stream;
 ///
 /// Construct with [`Input::from_memory`], [`Input::from_path`],
 /// [`Input::from_stdin`], or [`Input::from_reader`] (any
-/// [`std::io::Read`]). Pass to higher-level operations via
-/// [`Input::as_ptr`].
+/// [`std::io::Read`]). Operations consume inputs through their
+/// `*_with_input` constructors.
 ///
 /// When the input is reader-backed, the underlying [`std::io::Error`] of a
 /// failed read is retrievable via [`Input::io_error`] after the enclosing

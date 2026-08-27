@@ -5,7 +5,17 @@ Idiomatic Rust binding to the [RNP](https://github.com/rnpgp/rnp) OpenPGP
 
 RNP is the C++ OpenPGP implementation that powers Mozilla Thunderbird.
 This crate provides a thin, safe Rust wrapper over its public C FFI
-(declared in `include/rnp/rnp.h`).
+(declared in `include/rnp/rnp.h`) — with **full surface parity**: all 293
+public functions of librnp 0.18.1 are covered (see
+[`docs/PARITY.md`](docs/PARITY.md)).
+
+The workspace has three crates, mirroring the `botan-rs` layout:
+
+| Crate | Purpose | Docs |
+|-------|---------|------|
+| `rnp` (this crate) | Safe, idiomatic wrappers | [docs.rs/rnp-rs](https://docs.rs/rnp-rs) |
+| `rnp-sys` | Raw FFI declarations (`links = "rnp"`) | [docs.rs/rnp-sys](https://docs.rs/rnp-sys) |
+| `rnp-src` | Build-time librnp + Botan compilation | [docs.rs/rnp-src](https://docs.rs/rnp-src) |
 
 ## Getting started
 

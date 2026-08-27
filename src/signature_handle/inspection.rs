@@ -119,10 +119,8 @@ impl<'parent> Signature<'parent> {
     }
 
     /// The raw `rnp_result_t` validation error at `idx`. `None` when `idx`
-    /// is out of range. Pair with
-    /// [`Error::from_rnp_code`](crate::Error::from_rnp_code) /
-    /// [`rnp_result_to_string`](crate::version::result_to_string) for a
-    /// readable form. Wraps `rnp_signature_error_at`.
+    /// is out of range. Pair with [`from_rnp_code`](crate::from_rnp_code)
+    /// for a readable form. Wraps `rnp_signature_error_at`.
     pub fn error_at(&self, idx: usize) -> Result<Option<u32>> {
         // Upstream signals an out-of-range index with BAD_PARAMETERS;
         // bounds-check against the count first so `None` is the answer.

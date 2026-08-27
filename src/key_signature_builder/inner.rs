@@ -11,7 +11,7 @@ use std::ptr;
 /// Shared setter surface for all signature-creation builders.
 ///
 /// Each method takes and returns `Self` so builders chain cleanly. The
-/// blanket impl on [`SignatureBuilderInner`] does the actual FFI work;
+/// blanket impl on the internal `SignatureBuilderInner` does the actual FFI work;
 /// concrete builders just delegate.
 pub trait SignatureSetterOps: Sized {
     fn hash(self, h: Hash) -> Self;

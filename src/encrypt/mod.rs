@@ -23,7 +23,7 @@ pub use encryptor::Encryptor;
 // Shared types
 // ---------------------------------------------------------------------------
 
-/// Flags for [`Encryptor::set_flags`](crate::Encryptor::set_flags). Wraps `RNP_ENCRYPT_*`.
+/// Flags for [`Encryptor::flags`](crate::Encryptor::flags). Wraps `RNP_ENCRYPT_*`.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct EncryptFlags(pub u32);
 

@@ -10,6 +10,10 @@
 //!
 //! Safe, idiomatic wrappers live in the `rnp` crate (`rnp-rs`); most users
 //! want that instead.
+//!
+//! The upstream doc comments copied by bindgen contain fenced C/JSON
+//! fragments that rustdoc misreads as Rust code blocks; that is noise from
+//! the C source, not something we can fix here.
 
 #![allow(
     non_camel_case_types,
@@ -17,5 +21,6 @@
     dead_code,
     non_upper_case_globals
 )]
+#![allow(rustdoc::invalid_rust_codeblocks)]
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));

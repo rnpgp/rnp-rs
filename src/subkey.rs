@@ -2,7 +2,7 @@
 //!
 //! In librnp a subkey is just a `rnp_key_handle_t` with `is_sub() == true` —
 //! every getter that works on a primary key also works on a subkey.
-//! [`Subkey`] is therefore a thin newtype over [`Key`](crate::Key): it
+//! [`Subkey`] is therefore a thin newtype over [`Key`]: it
 //! forwards via Deref so callers don't have to learn a parallel surface.
 
 use crate::Key;

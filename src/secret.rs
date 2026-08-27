@@ -5,7 +5,7 @@
 //! password returns and any other short-lived secret material that
 //! shouldn't sit in freed heap memory.
 //!
-//! `SecretString` is intentionally neither [`Clone`] nor [`Display`]:
+//! `SecretString` is intentionally neither `Clone` nor `Display`:
 //! cloning defeats the zero-on-drop invariant, and a `Display` impl would
 //! let callers accidentally log the secret.
 

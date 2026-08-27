@@ -187,7 +187,8 @@ impl KeyBuilder {
         self
     }
 
-    /// Add a subkey to be generated alongside the primary in [`build`].
+    /// Add a subkey to be generated alongside the primary in
+    /// [`KeyBuilder::build`].
     ///
     /// The subkey is created after the primary key, with a binding
     /// signature. This is the idiomatic way to build a composite keypair

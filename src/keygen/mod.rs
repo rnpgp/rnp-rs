@@ -2,11 +2,11 @@
 //!
 //! Two builders over `rnp_op_generate_*`:
 //!
-//! - [`KeyBuilder`](crate::KeyBuilder) for primary keys (in [`primary`]).
-//! - [`SubkeyBuilder`](crate::SubkeyBuilder) for subkeys (in [`subkey`]).
+//! - [`KeyBuilder`] for primary keys.
+//! - [`SubkeyBuilder`] for subkeys.
 //!
-//! Plus the [`generate_key_json`] shortcut and the deprecated
-//! [`generate_test_key`] shim.
+//! Plus the [`generate_key_json`] shortcut, the one-call `generate_key_*`
+//! shorthands, and the deprecated `generate_test_key` shim.
 //!
 //! ## Module layout
 //!
@@ -14,6 +14,7 @@
 //! |------------|-------------------------------------------------------|
 //! | `primary`  | `KeyBuilder` + `apply_setters`                        |
 //! | `subkey`   | `SubkeyBuilder` + `apply_subkey_setters`              |
+//! | `shorthand`| one-call `generate_key_*` free functions              |
 //!
 //! The algorithm/curve/hash/cipher/compression/key-usage enums live in
 //! [`crate::algorithm`] and are re-exported here for backward compatibility.

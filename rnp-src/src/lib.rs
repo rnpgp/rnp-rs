@@ -112,7 +112,14 @@ pub fn build() -> Installed {
     }
 
     // --- 5. librnp ---
+    // The install prefix is keyed by flavor: a plain-0.18.1 artifact and a
+    // PQC/crypto-refresh-HEAD artifact have different headers and symbol
+    // sets, so they must never share a cache — building one and then the
+    // other in the same OUT_DIR would reuse a stale librnp.a/header.
+    #[cfg(not(any(feature = "pqc", feature = "crypto-refresh")))]
     let rnp_prefix = prefix.join("rnp");
+    #[cfg(any(feature = "pqc", feature = "crypto-refresh"))]
+    let rnp_prefix = prefix.join("rnp-flavored");
     if !rnp_prefix.join("lib").join("librnp.a").exists() {
         let mut deps = Deps::new();
         deps.push("botan", botan_prefix.clone());

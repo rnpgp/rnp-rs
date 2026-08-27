@@ -97,7 +97,7 @@ impl<'key> Uid<'key> {
         call_for_usize(|out| unsafe { ffi::rnp_uid_get_signature_count(self.handle, out) })
     }
 
-    /// Borrow the signature at `idx` on this UID. Returned [`Signature`]
+    /// Borrow the signature at `idx` on this UID. Returned [`Signature`](crate::Signature)
     /// borrows `self`.
     pub fn signature_at(&self, idx: usize) -> Result<Option<crate::Signature<'_>>> {
         let mut handle: ffi::rnp_signature_handle_t = ptr::null_mut();
