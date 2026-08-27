@@ -61,7 +61,8 @@ pub unsafe fn cstr_to_optional_string(raw: *mut c_char) -> Option<String> {
     Some(s)
 }
 
-/// Like [`cstr_to_optional_string`] but treats null as [`Error::NullPointer`].
+/// Like [`cstr_to_optional_string`] but treats null as
+/// [`Error::NullPointer`](crate::error::Error::NullPointer).
 ///
 /// # Safety
 ///

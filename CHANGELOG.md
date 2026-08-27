@@ -12,6 +12,11 @@ are the detailed audit trail for each feature area.
 
 ### Added
 
+- docs.rs now builds `rnp-sys` (and everything depending on it): the build
+  script takes a fast path under `DOCS_RS=1` — pregenerated bindings, no
+  link discovery, no vendored C build
+- All rustdoc lint suppressions removed from the crate root; every doc
+  link and code block now resolves clean under `cargo doc`
 - FFI surface-parity audit and enforcement: all 293 `rnp.h` functions of
   librnp 0.18.1 are now accounted for (289 safe call sites + 4 documented
   equivalents). `tests/ffi_parity.rs` fails CI on any new untracked

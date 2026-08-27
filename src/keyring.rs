@@ -1,4 +1,4 @@
-//! Keyring-level operations on [`Context`](crate::Context): save, unload,
+//! Keyring-level operations on [`Context`]: save, unload,
 //! import, homedir discovery, and key counts.
 
 use crate::context::Context;

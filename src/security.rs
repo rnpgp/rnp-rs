@@ -215,8 +215,8 @@ pub fn calculate_iterations(hash: crate::keygen::Hash, memory: usize) -> Result<
 /// `ctx`. `key` is the key the password is for (or `None`). `context_str`
 /// is the why (e.g. `"sign"`, `"decrypt"`).
 ///
-/// The returned [`SecretString`] zeroises its bytes on drop — callers who
-/// need a plain `String` can use [`SecretString::into_string`], but should
+/// The returned [`SecretString`](crate::SecretString) zeroises its bytes on drop — callers who
+/// need a plain `String` can use `SecretString::into_string`, but should
 /// prefer keeping the secret scoped.
 pub fn request_password(
     ctx: &Context,

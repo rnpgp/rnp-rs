@@ -15,6 +15,20 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 fn main() {
+    // docs.rs sandbox: no librnp, no libclang, no C toolchain for a vendored
+    // build. Documentation only needs the pregenerated bindings — rustdoc
+    // never links the native library. docs.rs sets DOCS_RS=1 for builds it
+    // invokes, so take the fast path and skip link discovery entirely.
+    if env::var_os("DOCS_RS").is_some() {
+        let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"));
+        let src = pregenerated_bindings_path();
+        fs::copy(&src, out_dir.join("bindings.rs")).unwrap_or_else(|e| {
+            panic!("Couldn't copy pregenerated bindings for docs.rs build: {e}")
+        });
+        eprintln!("rnp-sys: docs.rs build — pregenerated bindings, no link");
+        return;
+    }
+
     // Mixed-graph detection (requires the `botan-sys-detect` feature, which
     // makes botan-sys's links metadata visible here). If another crate in
     // this build graph enabled botan-sys's vendored feature, Botan is being

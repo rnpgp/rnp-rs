@@ -67,7 +67,7 @@ impl VerifySignature {
         Ok((create, expires))
     }
 
-    /// The full [`Signature`] handle, for inspection of subpackets, key
+    /// The full [`Signature`](crate::Signature) handle, for inspection of subpackets, key
     /// flags, and other metadata. The returned handle borrows `self`.
     pub fn handle(&self) -> Result<crate::Signature<'_>> {
         let mut raw: ffi::rnp_signature_handle_t = ptr::null_mut();
@@ -84,7 +84,7 @@ impl VerifySignature {
     }
 
     /// The signing key, when present in the keyring. Returns `None` if the
-    /// signer's key wasn't loaded. The returned [`Key`] borrows `self`.
+    /// signer's key wasn't loaded. The returned [`Key`](crate::Key) borrows `self`.
     pub fn key(&self) -> Result<Option<crate::Key<'_>>> {
         let mut raw: ffi::rnp_key_handle_t = ptr::null_mut();
         unsafe {

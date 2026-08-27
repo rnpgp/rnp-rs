@@ -5,7 +5,7 @@
 //! are all performed through a `Context`.
 //!
 //! Callback installation lives on [`Context`] as a thin delegate to the
-//! [`Callbacks`](crate::callbacks::Callbacks) registry; the trait definitions,
+//! callbacks registry; the trait definitions,
 //! holder types, and C-side thunks are in [`crate::callbacks`].
 
 use crate::callbacks::Callbacks;
