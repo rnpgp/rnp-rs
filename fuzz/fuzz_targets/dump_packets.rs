@@ -4,8 +4,8 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use rnp::dump_packets_bytes_to_json;
 use rnp::JsonDumpFlags;
+use rnp::dump_packets_bytes_to_json;
 
 fuzz_target!(|data: &[u8]| {
     let _ = dump_packets_bytes_to_json(data, JsonDumpFlags::default());

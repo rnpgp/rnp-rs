@@ -7,9 +7,15 @@ edition = "2024"
 [package.metadata]
 cargo-fuzz = true
 
+# Own workspace root: this harness builds against nightly-only flags and
+# must not inherit the main workspace's target dir or member resolution.
+[workspace]
+
 [dependencies]
 libfuzzer-sys = "0.4"
-rnp = { path = ".." }
+# The workspace package is named rnp-rs; alias it to `rnp` so the targets
+# can keep `use rnp::...`.
+rnp = { package = "rnp-rs", path = ".." }
 
 [[bin]]
 name = "decrypt"
@@ -20,6 +26,12 @@ doc = false
 [[bin]]
 name = "verify"
 path = "fuzz_targets/verify.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "streaming"
+path = "fuzz_targets/streaming.rs"
 test = false
 doc = false
 
