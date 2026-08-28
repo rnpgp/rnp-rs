@@ -15,7 +15,7 @@ use crate::context::Context;
 use crate::error::{Result, check};
 use crate::ffi;
 use crate::key::Key;
-use crate::ops::{ByteSource, Input, Output, or_stream_error};
+use crate::ops::{ByteSource, Input, MessageSource, Output, or_stream_error};
 use crate::verify::{VerifyOp, VerifyResult};
 use std::ffi::CString;
 use std::ptr;
@@ -134,27 +134,28 @@ pub struct Signer<'a, 'ctx> {
 }
 
 impl<'a, 'ctx> Signer<'a, 'ctx> {
-    pub fn new(ctx: &'ctx Context, message: &'a [u8], mode: Mode) -> Self {
+    /// Begin signing over `message` — anything message-shaped: a byte
+    /// slice (`b"..."`, `&data[..]`) or a caller-built [`Input`] (e.g.
+    /// from [`Input::from_reader`], to stream from a non-seekable
+    /// source). The input is consumed when the operation executes.
+    pub fn new(ctx: &'ctx Context, message: impl Into<MessageSource<'a>>, mode: Mode) -> Self {
         Signer {
             ctx,
-            source: ByteSource::Bytes(message),
+            source: message.into().0,
             mode,
             signers: Vec::new(),
             options: SignOptions::default(),
         }
     }
 
-    /// Begin signing over a caller-built [`Input`] — e.g. from
-    /// [`Input::from_reader`] to stream from a non-seekable source. The
-    /// input is consumed when the operation executes.
+    /// Begin signing over a caller-built [`Input`]. Deprecated: pass the
+    /// [`Input`] to [`Signer::new`] — it accepts both bytes and inputs.
+    #[deprecated(
+        since = "0.2.0",
+        note = "pass the Input to Signer::new; it accepts both"
+    )]
     pub fn new_with_input(ctx: &'ctx Context, input: Input, mode: Mode) -> Self {
-        Signer {
-            ctx,
-            source: ByteSource::Owned(input),
-            mode,
-            signers: Vec::new(),
-            options: SignOptions::default(),
-        }
+        Self::new(ctx, input, mode)
     }
 
     /// Add a signer using the builder's default hash.

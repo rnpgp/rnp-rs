@@ -6,21 +6,36 @@ use crate::error::{Result, check};
 use crate::ffi;
 use crate::ops::{Input, Output};
 
-/// Decrypt `ciphertext` and return the plaintext bytes. Requires that the
-/// keyring contain the matching secret key (unlocked) or that a password
-/// provider returns the right password.
-pub fn decrypt(ctx: &Context, ciphertext: &[u8]) -> Result<Vec<u8>> {
-    let input = Input::from_memory(ciphertext)?;
-    let output = Output::to_memory()?;
-    unsafe {
-        check(ffi::rnp_decrypt(ctx.ffi, input.as_ptr(), output.as_ptr()))?;
-    }
+/// Decrypt `ciphertext` (anything message-shaped: a byte slice or a
+/// caller-built [`Input`]) and return the plaintext bytes. Requires that
+/// the keyring contain the matching secret key (unlocked) or that a
+/// password provider returns the right password.
+pub fn decrypt<'s>(
+    ctx: &Context,
+    ciphertext: impl Into<crate::ops::MessageSource<'s>>,
+) -> Result<Vec<u8>> {
+    let mut output = Output::to_memory()?;
+    decrypt_into(ctx, ciphertext, &mut output)?;
     output.into_bytes()
 }
 
-/// Decrypt `ciphertext` and write the plaintext to `output`.
-pub fn decrypt_to(ctx: &Context, ciphertext: &[u8], output: &mut Output) -> Result<()> {
-    let input = Input::from_memory(ciphertext)?;
+/// Decrypt `ciphertext` (anything message-shaped: a byte slice or a
+/// caller-built [`Input`]) and write the plaintext to `output`.
+pub fn decrypt_to<'s>(
+    ctx: &Context,
+    ciphertext: impl Into<crate::ops::MessageSource<'s>>,
+    output: &mut Output,
+) -> Result<()> {
+    decrypt_into(ctx, ciphertext, output).map(|_| ())
+}
+
+fn decrypt_into<'s>(
+    ctx: &Context,
+    ciphertext: impl Into<crate::ops::MessageSource<'s>>,
+    output: &mut Output,
+) -> Result<()> {
+    let mut source = ciphertext.into();
+    let input = source.0.take()?;
     unsafe { check(ffi::rnp_decrypt(ctx.ffi, input.as_ptr(), output.as_ptr())) }
 }
 
@@ -32,6 +47,13 @@ pub fn decrypt_to(ctx: &Context, ciphertext: &[u8], output: &mut Output) -> Resu
 /// once, which is what a non-seekable reader can support. If the reader
 /// fails mid-operation, the original [`std::io::Error`] is available via
 /// [`Input::io_error`](crate::Input::io_error).
+///
+/// Deprecated: pass the [`Input`] to [`decrypt_to`] — it accepts both
+/// bytes and inputs.
+#[deprecated(
+    since = "0.2.0",
+    note = "pass the Input to decrypt_to; it accepts both"
+)]
 pub fn decrypt_from_input(ctx: &Context, ciphertext: &Input, output: &mut Output) -> Result<()> {
     unsafe {
         check(ffi::rnp_decrypt(

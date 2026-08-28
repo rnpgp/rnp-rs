@@ -154,6 +154,7 @@ pub use dump::{
     DumpFlags, JsonDumpFlags, JsonFlags, dump_packets_bytes_to_json, dump_packets_to_json,
     dump_packets_to_output,
 };
+#[allow(deprecated)]
 pub use encrypt::{
     AddPasswordOptions, AeadType, DecryptResult, Decryptor, EncryptFlags, Encryptor, decrypt,
     decrypt_from_input, decrypt_to,
@@ -173,8 +174,8 @@ pub use keygen::{
 };
 pub use keyring::{IdentifierIterator, IdentifierKind};
 pub use ops::{
-    ArmorType, Input, Output, OutputFileFlags, WriterOutcome, call_for_optional_string,
-    call_for_string, cstr_to_optional_string, cstr_to_string,
+    ArmorType, Input, MessageSource, Output, OutputFileFlags, WriterOutcome,
+    call_for_optional_string, call_for_string, cstr_to_optional_string, cstr_to_string,
 };
 pub use secret::{SecretString, zero_string_bytes};
 pub use security::{
