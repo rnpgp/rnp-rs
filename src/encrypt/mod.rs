@@ -16,6 +16,7 @@ use crate::ffi;
 mod decryptor;
 mod encryptor;
 
+#[allow(deprecated)]
 pub use decryptor::{DecryptResult, Decryptor, decrypt, decrypt_from_input, decrypt_to};
 pub use encryptor::Encryptor;
 

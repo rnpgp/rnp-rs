@@ -58,16 +58,32 @@ pub struct VerifyOp<'ctx> {
 
 impl<'ctx> VerifyOp<'ctx> {
     /// Begin inline verification. `signed_message` is the message produced
-    /// by inline signing; `output` is where the embedded plaintext will be
-    /// written (use `Output::to_null()` to discard).
-    pub fn inline(ctx: &'ctx Context, signed_message: &[u8], output: Output) -> Result<Self> {
-        Self::inline_with_input(ctx, Input::from_memory(signed_message)?, output)
+    /// by inline signing — anything message-shaped: a byte slice or a
+    /// caller-built [`Input`] (e.g. from
+    /// [`Input::from_reader`](crate::Input::from_reader), to verify a
+    /// streamed message; consumed when the op executes). `output` is where
+    /// the embedded plaintext will be written (use `Output::to_null()` to
+    /// discard).
+    pub fn inline<'s>(
+        ctx: &'ctx Context,
+        signed_message: impl Into<crate::ops::MessageSource<'s>>,
+        output: Output,
+    ) -> Result<Self> {
+        let mut source = signed_message.into();
+        Self::create_inline(ctx, source.0.take()?, output)
     }
 
-    /// As [`VerifyOp::inline`], over a caller-built [`Input`] — e.g. from
-    /// [`Input::from_reader`](crate::Input::from_reader) to verify a
-    /// streamed message. The input is consumed when the op executes.
+    /// As [`VerifyOp::inline`], over a caller-built [`Input`]. Deprecated:
+    /// pass the [`Input`] to [`VerifyOp::inline`] — it accepts both.
+    #[deprecated(
+        since = "0.2.0",
+        note = "pass the Input to VerifyOp::inline; it accepts both"
+    )]
     pub fn inline_with_input(ctx: &'ctx Context, input: Input, output: Output) -> Result<Self> {
+        Self::create_inline(ctx, input, output)
+    }
+
+    fn create_inline(ctx: &'ctx Context, input: Input, output: Output) -> Result<Self> {
         let mut op: ffi::rnp_op_verify_t = ptr::null_mut();
         unsafe {
             check(ffi::rnp_op_verify_create(
@@ -86,25 +102,36 @@ impl<'ctx> VerifyOp<'ctx> {
         })
     }
 
-    /// Begin detached verification. `signature` is the detached signature
-    /// over `message`.
-    pub fn detached(ctx: &'ctx Context, message: &[u8], signature: &[u8]) -> Result<Self> {
-        Self::detached_with_input(
-            ctx,
-            Input::from_memory(message)?,
-            Input::from_memory(signature)?,
-        )
+    /// Begin detached verification. `message` and `signature` are each
+    /// anything message-shaped: byte slices or caller-built [`Input`]s
+    /// (e.g. from [`Input::from_reader`](crate::Input::from_reader), to
+    /// verify streamed data; consumed when the op executes). `signature`
+    /// is the detached signature over `message`.
+    pub fn detached<'m, 's>(
+        ctx: &'ctx Context,
+        message: impl Into<crate::ops::MessageSource<'m>>,
+        signature: impl Into<crate::ops::MessageSource<'s>>,
+    ) -> Result<Self> {
+        let mut msg_src = message.into();
+        let mut sig_src = signature.into();
+        Self::create_detached(ctx, msg_src.0.take()?, sig_src.0.take()?)
     }
 
-    /// As [`VerifyOp::detached`], over caller-built [`Input`]s — e.g. from
-    /// [`Input::from_reader`](crate::Input::from_reader) to verify a
-    /// streamed message or signature. Both inputs are consumed when the op
-    /// executes.
+    /// As [`VerifyOp::detached`], over caller-built [`Input`]s. Deprecated:
+    /// pass the [`Input`]s to [`VerifyOp::detached`] — it accepts both.
+    #[deprecated(
+        since = "0.2.0",
+        note = "pass the Inputs to VerifyOp::detached; it accepts both"
+    )]
     pub fn detached_with_input(
         ctx: &'ctx Context,
         message: Input,
         signature: Input,
     ) -> Result<Self> {
+        Self::create_detached(ctx, message, signature)
+    }
+
+    fn create_detached(ctx: &'ctx Context, message: Input, signature: Input) -> Result<Self> {
         let null_out = Output::to_null()?;
         let mut op: ffi::rnp_op_verify_t = ptr::null_mut();
         unsafe {

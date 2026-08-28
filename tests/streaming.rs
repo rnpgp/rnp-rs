@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 use rnp::algorithm::Algorithm;
 use rnp::{
     Context, Decryptor, EncryptFlags, Encryptor, Error, ExportFlags, Input, KeyBuilder, KeyUsage,
-    KeyringFormat, LoadSaveFlags, Mode, Output, Signer, VerifyOp, decrypt_from_input,
+    KeyringFormat, LoadSaveFlags, Mode, Output, Signer, VerifyOp,
 };
 
 /// A reader that yields its bytes and then fails with a caller-chosen
@@ -147,7 +147,7 @@ fn sign_via_reader_and_verify_via_reader() {
 
     let input = Input::from_reader(std::io::Cursor::new(message.clone())).expect("input");
     let mut output = Output::to_memory().expect("output");
-    Signer::new_with_input(&ctx, input, Mode::Detached)
+    Signer::new(&ctx, input, Mode::Detached)
         .add_signer(&key)
         .build(&mut output)
         .expect("streamed sign");
@@ -155,7 +155,7 @@ fn sign_via_reader_and_verify_via_reader() {
 
     let msg_input = Input::from_reader(std::io::Cursor::new(message)).expect("msg input");
     let sig_input = Input::from_reader(std::io::Cursor::new(signature)).expect("sig input");
-    let op = VerifyOp::detached_with_input(&ctx, msg_input, sig_input).expect("detached op");
+    let op = VerifyOp::detached(&ctx, msg_input, sig_input).expect("detached op");
     let result = op.execute().expect("streamed verify");
     assert!(
         result.any_valid().expect("validity"),
@@ -177,7 +177,7 @@ fn inline_verify_via_reader_writes_plaintext_to_writer() {
     let input = Input::from_reader(std::io::Cursor::new(signed)).expect("input");
     let sink = RecordingWriter::new();
     let output = Output::to_writer(sink.clone()).expect("writer output");
-    let op = VerifyOp::inline_with_input(&ctx, input, output).expect("inline op");
+    let op = VerifyOp::inline(&ctx, input, output).expect("inline op");
     let result = op.execute().expect("streamed inline verify");
     assert!(result.any_valid().expect("validity"));
     assert_eq!(sink.bytes(), message);
@@ -221,7 +221,7 @@ fn encrypt_via_reader_and_decrypt_via_reader() {
     {
         let input = Input::from_reader(std::io::Cursor::new(secret.clone())).expect("input");
         let mut output = Output::to_writer(sink.clone()).expect("writer output");
-        Encryptor::new_with_input(&ctx, input)
+        Encryptor::new(&ctx, input)
             .expect("encryptor")
             .add_recipient(&key)
             .build(&mut output)
@@ -233,7 +233,7 @@ fn encrypt_via_reader_and_decrypt_via_reader() {
 
     let ct_input = Input::from_reader(std::io::Cursor::new(ciphertext)).expect("ct input");
     let mut plaintext_out = Output::to_memory().expect("plaintext output");
-    decrypt_from_input(&ctx, &ct_input, &mut plaintext_out).expect("streamed decrypt");
+    rnp::decrypt_to(&ctx, ct_input, &mut plaintext_out).expect("streamed decrypt");
     assert_eq!(plaintext_out.into_bytes().unwrap(), secret);
 }
 
@@ -280,7 +280,7 @@ fn keys_roundtrip_through_reader_input() {
         .expect("export");
 
     let input = Input::from_reader(std::io::Cursor::new(exported)).expect("reader input");
-    ctx.load_keys_from_input(KeyringFormat::Gpg, &input, LoadSaveFlags::PUBLIC)
+    ctx.load_keys(KeyringFormat::Gpg, input, LoadSaveFlags::PUBLIC)
         .expect("load from reader");
     assert!(ctx.public_key_count().expect("count") >= 1);
 }
@@ -303,7 +303,7 @@ fn import_keys_from_input_returns_status() {
     let other = Context::new().expect("fresh ctx");
     let input = Input::from_reader(std::io::Cursor::new(exported)).expect("reader input");
     let status = other
-        .import_keys_from_input(&input, LoadSaveFlags::PUBLIC)
+        .import_keys(input, LoadSaveFlags::PUBLIC)
         .expect("import status");
     assert!(
         status.contains("\"public\":\"new\""),
@@ -325,7 +325,7 @@ fn reader_io_error_is_surfaced_by_the_op() {
     let input = Input::from_reader(reader).expect("input");
 
     let mut output = Output::to_memory().expect("output");
-    let err = Signer::new_with_input(&ctx, input, Mode::Detached)
+    let err = Signer::new(&ctx, input, Mode::Detached)
         .add_signer(&key)
         .build(&mut output)
         .expect_err("op must fail when the reader fails");
@@ -353,17 +353,19 @@ fn verify_reader_io_error_is_surfaced_by_the_op() {
 
     let msg = Input::from_reader(DenyingReader).expect("msg input");
     let sig = Input::from_memory(&sig_bytes).expect("sig input");
-    let op = VerifyOp::detached_with_input(&ctx, msg, sig).expect("op");
+    let op = VerifyOp::detached(&ctx, msg, sig).expect("op");
     match op.execute() {
         Err(err) => assert_io_error(&err, ErrorKind::BrokenPipe),
         Ok(_) => panic!("verifying a denied reader must fail"),
     }
 }
 
+#[allow(deprecated)]
 #[test]
 fn decrypt_reader_io_error_is_inspectable() {
-    // decrypt_from_input borrows the input, so the caller keeps access to
-    // the recorded io error via Input::io_error().
+    // The deprecated decrypt_from_input is deliberately kept for exactly
+    // this shape: it borrows the input, so the caller retains access to
+    // the recorded io error via Input::io_error() afterwards.
     let ctx = Context::new().expect("ctx");
 
     let reader = FailingReader::new(
@@ -372,7 +374,7 @@ fn decrypt_reader_io_error_is_inspectable() {
     );
     let input = Input::from_reader(reader).expect("input");
     let mut output = Output::to_memory().expect("output");
-    let res = decrypt_from_input(&ctx, &input, &mut output);
+    let res = rnp::decrypt_from_input(&ctx, &input, &mut output);
     if res.is_err() {
         let io = input
             .io_error()
@@ -442,7 +444,7 @@ fn reader_panic_propagates_on_drop() {
         let ctx = Context::new().expect("ctx");
         let key = signing_key(&ctx, "panic-read <pr@example.com>");
         let mut output = Output::to_memory().expect("output");
-        let _ = Signer::new_with_input(
+        let _ = Signer::new(
             &ctx,
             Input::from_reader(PanickingReader).expect("input"),
             Mode::Detached,
@@ -493,7 +495,7 @@ fn encryptor_flags_still_apply_on_streamed_input() {
 
     let input = Input::from_reader(std::io::Cursor::new(b"flagged".to_vec())).expect("input");
     let mut output = Output::to_memory().expect("output");
-    Encryptor::new_with_input(&ctx, input)
+    Encryptor::new(&ctx, input)
         .expect("encryptor")
         .add_recipient(&key)
         .flags(EncryptFlags::default())
@@ -505,4 +507,43 @@ fn encryptor_flags_still_apply_on_streamed_input() {
         bytes.starts_with(b"-----BEGIN PGP MESSAGE-----"),
         "armored output expected"
     );
+}
+
+// The deprecated twin constructors remain as thin shims over the generic
+// MessageSource constructors; keep them exercised so they cannot rot.
+#[allow(deprecated)]
+#[test]
+fn deprecated_input_shims_still_work() {
+    let ctx = Context::new().expect("ctx");
+    let key = signing_key(&ctx, "shims <shims@example.com>");
+
+    let signed =
+        Signer::new_with_input(&ctx, Input::from_memory(b"via shim").unwrap(), Mode::Inline)
+            .add_signer(&key)
+            .build_to_memory()
+            .expect("sign via shim");
+
+    let op = VerifyOp::inline_with_input(
+        &ctx,
+        Input::from_memory(&signed).unwrap(),
+        Output::to_memory().unwrap(),
+    )
+    .expect("inline shim");
+    let result = op.execute().expect("verify via shim");
+    assert!(result.any_valid().expect("validity"));
+
+    let mut out = Output::to_memory().unwrap();
+    let ct = {
+        let enc_key = encryption_key(&ctx, "shims-enc <se@example.com>");
+        let mut ct_out = Output::to_memory().unwrap();
+        Encryptor::new_with_input(&ctx, Input::from_memory(b"secret").unwrap())
+            .expect("encryptor shim")
+            .add_recipient(&enc_key)
+            .build(&mut ct_out)
+            .expect("encrypt via shim");
+        ct_out.into_bytes().unwrap()
+    };
+    rnp::decrypt_from_input(&ctx, &Input::from_memory(&ct).unwrap(), &mut out)
+        .expect("decrypt via shim");
+    assert_eq!(out.into_bytes().unwrap(), b"secret");
 }

@@ -30,7 +30,7 @@ use super::{AddPasswordOptions, AeadType, EncryptFlags};
 /// ```
 pub struct Encryptor<'a> {
     pub(crate) ctx: &'a Context,
-    pub(crate) input: Input,
+    pub(crate) source: crate::ops::MessageSource<'a>,
     pub(crate) recipients: Vec<&'a Key<'a>>,
     pub(crate) signatures: Vec<&'a Key<'a>>,
     pub(crate) passwords: Vec<(CString, AddPasswordOptions)>,
@@ -54,19 +54,23 @@ pub struct Encryptor<'a> {
 }
 
 impl<'a> Encryptor<'a> {
-    /// Begin building an encryption operation over `plaintext`.
-    pub fn new(ctx: &'a Context, plaintext: &[u8]) -> Result<Self> {
-        Self::new_with_input(ctx, Input::from_memory(plaintext)?)
-    }
-
-    /// Begin building an encryption operation over a caller-built
-    /// [`Input`] — e.g. from [`Input::from_reader`](crate::Input::from_reader)
-    /// to stream from a non-seekable source. The input is consumed when the
-    /// operation executes.
-    pub fn new_with_input(ctx: &'a Context, input: Input) -> Result<Self> {
+    /// Begin building an encryption operation over `plaintext` — anything
+    /// message-shaped: a byte slice (`b"..."`, `&data[..]`) or a
+    /// caller-built [`Input`] (e.g. from
+    /// [`Input::from_reader`](crate::Input::from_reader), to stream from a
+    /// non-seekable source). The input is consumed when the operation
+    /// executes.
+    ///
+    /// Construction cannot fail (the source is only converted to an
+    /// [`Input`] at execution time); the `Result` is kept for API
+    /// stability.
+    pub fn new(
+        ctx: &'a Context,
+        plaintext: impl Into<crate::ops::MessageSource<'a>>,
+    ) -> Result<Self> {
         Ok(Encryptor {
             ctx,
-            input,
+            source: plaintext.into(),
             recipients: Vec::new(),
             signatures: Vec::new(),
             passwords: Vec::new(),
@@ -88,6 +92,17 @@ impl<'a> Encryptor<'a> {
             #[cfg(feature = "crypto-refresh")]
             skesk_v6: false,
         })
+    }
+
+    /// Begin building an encryption operation over a caller-built
+    /// [`Input`]. Deprecated: pass the [`Input`] to [`Encryptor::new`] —
+    /// it accepts both bytes and inputs.
+    #[deprecated(
+        since = "0.2.0",
+        note = "pass the Input to Encryptor::new; it accepts both"
+    )]
+    pub fn new_with_input(ctx: &'a Context, input: Input) -> Result<Self> {
+        Encryptor::new(ctx, input)
     }
 
     /// Add a recipient's public key. May be called multiple times.
@@ -201,13 +216,18 @@ impl<'a> Encryptor<'a> {
     }
 
     /// Execute the encryption, writing the ciphertext to `output`.
+    ///
+    /// If a reader-backed input fails mid-operation, the returned error is
+    /// the original [`std::io::Error`] (see
+    /// [`Input::from_reader`](crate::Input::from_reader)).
     pub fn build(mut self, output: &mut Output) -> Result<()> {
+        let mut input = self.source.0.take()?;
         let mut op: ffi::rnp_op_encrypt_t = ptr::null_mut();
         unsafe {
             check(ffi::rnp_op_encrypt_create(
                 &mut op,
                 self.ctx.ffi,
-                self.input.as_ptr(),
+                input.as_ptr(),
                 output.as_ptr(),
             ))?;
         }
@@ -226,7 +246,7 @@ impl<'a> Encryptor<'a> {
             if exec.is_err() {
                 // Surface the underlying stream failure, if any — librnp
                 // only reports a generic RNP_ERROR_READ/WRITE.
-                if let Some(io) = self.input.take_io_error() {
+                if let Some(io) = input.take_io_error() {
                     return Err(io.into());
                 }
             }

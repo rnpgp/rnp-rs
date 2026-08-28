@@ -43,20 +43,18 @@ impl Context {
     ///
     /// `format` selects the on-the-wire keyring format (GPG, KBX, G10). For
     /// OpenPGP-armored or binary key data use `KeyringFormat::Gpg`.
-    pub fn load_keys(
+    pub fn load_keys<'s>(
         &self,
         format: KeyringFormat,
-        bytes: &[u8],
+        source: impl Into<crate::ops::MessageSource<'s>>,
         flags: LoadSaveFlags,
     ) -> Result<()> {
-        let input = Input::from_memory(bytes)?;
-        self.load_keys_from_input(format, &input, flags)
+        let mut source = source.into();
+        let input = source.0.take()?;
+        self.load_keys_input(format, &input, flags)
     }
 
-    /// As [`Context::load_keys`], over a caller-built [`Input`] — e.g.
-    /// from [`Input::from_reader`](crate::Input::from_reader) to load key
-    /// material streamed from a file or socket.
-    pub fn load_keys_from_input(
+    fn load_keys_input(
         &self,
         format: KeyringFormat,
         input: &Input,
@@ -71,5 +69,20 @@ impl Context {
                 flags.bits(),
             ))
         }
+    }
+
+    /// As [`Context::load_keys`], over a caller-built [`Input`]. Deprecated:
+    /// pass the [`Input`] to [`Context::load_keys`] — it accepts both.
+    #[deprecated(
+        since = "0.2.0",
+        note = "pass the &Input to Context::load_keys; it accepts both"
+    )]
+    pub fn load_keys_from_input(
+        &self,
+        format: KeyringFormat,
+        input: &Input,
+        flags: LoadSaveFlags,
+    ) -> Result<()> {
+        self.load_keys_input(format, input, flags)
     }
 }
