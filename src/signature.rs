@@ -45,14 +45,62 @@ struct SignerSpec {
     expiration_time: Option<u32>,
 }
 
-/// Op-level (non-signature) sign options, applied after the op is created.
-#[derive(Default)]
-struct SignExtras {
+/// Op-level sign options: everything applied to the `rnp_op_sign_t` after
+/// creation, as opposed to per-signature options (those live in
+/// [`SignerSpec`]). This struct is the op's configuration module — builder
+/// methods write its fields, and [`SignOptions::apply`] is the single
+/// place that replays them onto the C handle, so each option has one home.
+struct SignOptions {
+    armor: bool,
+    default_hash: Hash,
     compression: Option<(crate::algorithm::Compression, u8)>,
     creation_time: Option<u32>,
     expiration_time: Option<u32>,
     file_name: Option<CString>,
     file_mtime: Option<u32>,
+}
+
+impl Default for SignOptions {
+    fn default() -> Self {
+        SignOptions {
+            armor: false,
+            default_hash: Hash::Sha256,
+            compression: None,
+            creation_time: None,
+            expiration_time: None,
+            file_name: None,
+            file_mtime: None,
+        }
+    }
+}
+
+impl SignOptions {
+    /// Replay every op-level option onto a created sign op. Setter calls
+    /// live here, next to the fields they configure.
+    unsafe fn apply(&self, op: ffi::rnp_op_sign_t) {
+        unsafe {
+            let hash_c = CString::new(self.default_hash.as_str()).unwrap();
+            let _ = ffi::rnp_op_sign_set_hash(op, hash_c.as_ptr());
+            let _ = ffi::rnp_op_sign_set_armor(op, self.armor);
+
+            if let Some((alg, level)) = self.compression {
+                let c = CString::new(alg.as_str()).unwrap();
+                let _ = ffi::rnp_op_sign_set_compression(op, c.as_ptr(), level as i32);
+            }
+            if let Some(t) = self.creation_time {
+                let _ = ffi::rnp_op_sign_set_creation_time(op, t);
+            }
+            if let Some(t) = self.expiration_time {
+                let _ = ffi::rnp_op_sign_set_expiration_time(op, t);
+            }
+            if let Some(name) = &self.file_name {
+                let _ = ffi::rnp_op_sign_set_file_name(op, name.as_ptr());
+            }
+            if let Some(t) = self.file_mtime {
+                let _ = ffi::rnp_op_sign_set_file_mtime(op, t);
+            }
+        }
+    }
 }
 
 /// Builder over `rnp_op_sign_*`. Unifies inline / detached / cleartext
@@ -80,15 +128,9 @@ pub struct Signer<'a, 'ctx> {
     source: ByteSource<'a>,
     mode: Mode,
     signers: Vec<SignerSpec>,
-    armor: bool,
-    default_hash: Hash,
-    /// Op-level literal-data / compression options, applied to the op (not
-    /// to individual signatures). All optional.
-    compression: Option<(crate::algorithm::Compression, u8)>,
-    creation_time: Option<u32>,
-    expiration_time: Option<u32>,
-    file_name: Option<CString>,
-    file_mtime: Option<u32>,
+    /// Op-level configuration. The builder is the config module: the only
+    /// things that cross into execution are the message input and output.
+    options: SignOptions,
 }
 
 impl<'a, 'ctx> Signer<'a, 'ctx> {
@@ -98,13 +140,7 @@ impl<'a, 'ctx> Signer<'a, 'ctx> {
             source: ByteSource::Bytes(message),
             mode,
             signers: Vec::new(),
-            armor: false,
-            default_hash: Hash::Sha256,
-            compression: None,
-            creation_time: None,
-            expiration_time: None,
-            file_name: None,
-            file_mtime: None,
+            options: SignOptions::default(),
         }
     }
 
@@ -117,13 +153,7 @@ impl<'a, 'ctx> Signer<'a, 'ctx> {
             source: ByteSource::Owned(input),
             mode,
             signers: Vec::new(),
-            armor: false,
-            default_hash: Hash::Sha256,
-            compression: None,
-            creation_time: None,
-            expiration_time: None,
-            file_name: None,
-            file_mtime: None,
+            options: SignOptions::default(),
         }
     }
 
@@ -171,14 +201,14 @@ impl<'a, 'ctx> Signer<'a, 'ctx> {
 
     /// Toggle ASCII-armored output. Default: binary.
     pub fn armor(mut self, on: bool) -> Self {
-        self.armor = on;
+        self.options.armor = on;
         self
     }
 
     /// Set the default hash for signers added via [`Self::add_signer`].
     /// Signers added via [`Self::add_signer_with_hash`] keep their own hash.
     pub fn hash(mut self, h: Hash) -> Self {
-        self.default_hash = h;
+        self.options.default_hash = h;
         self
     }
 
@@ -186,7 +216,7 @@ impl<'a, 'ctx> Signer<'a, 'ctx> {
     /// and cleartext modes only; ignored for detached signatures. Wraps
     /// `rnp_op_sign_set_compression`.
     pub fn compression(mut self, alg: crate::algorithm::Compression, level: u8) -> Self {
-        self.compression = Some((alg, level));
+        self.options.compression = Some((alg, level));
         self
     }
 
@@ -194,7 +224,7 @@ impl<'a, 'ctx> Signer<'a, 'ctx> {
     /// op. Wraps `rnp_op_sign_set_creation_time`; per-signer values set via
     /// [`Self::add_signer_with_options`] take precedence.
     pub fn creation_time(mut self, t: u32) -> Self {
-        self.creation_time = Some(t);
+        self.options.creation_time = Some(t);
         self
     }
 
@@ -202,21 +232,21 @@ impl<'a, 'ctx> Signer<'a, 'ctx> {
     /// Wraps `rnp_op_sign_set_expiration_time`; per-signer values set via
     /// [`Self::add_signer_with_options`] take precedence.
     pub fn expiration_time(mut self, t: u32) -> Self {
-        self.expiration_time = Some(t);
+        self.options.expiration_time = Some(t);
         self
     }
 
     /// Set the literal-data packet's file name. Wraps
     /// `rnp_op_sign_set_file_name`.
     pub fn file_name(mut self, name: impl AsRef<str>) -> Self {
-        self.file_name = Some(CString::new(name.as_ref()).unwrap_or_default());
+        self.options.file_name = Some(CString::new(name.as_ref()).unwrap_or_default());
         self
     }
 
     /// Set the literal-data packet's file modification time (Unix seconds).
     /// Wraps `rnp_op_sign_set_file_mtime`.
     pub fn file_mtime(mut self, t: u32) -> Self {
-        self.file_mtime = Some(t);
+        self.options.file_mtime = Some(t);
         self
     }
 
@@ -225,28 +255,12 @@ impl<'a, 'ctx> Signer<'a, 'ctx> {
     /// If a reader-backed message input fails mid-operation, the returned
     /// error is the original [`std::io::Error`] (see
     /// [`Input::from_reader`](crate::Input::from_reader)).
-    pub fn build(self, output: &mut Output) -> Result<()> {
+    pub fn build(mut self, output: &mut Output) -> Result<()> {
         if self.signers.is_empty() {
             return Err(crate::error::Error::NullPointer);
         }
-        let mut input = self.source.into_input()?;
-        let extras = SignExtras {
-            compression: self.compression,
-            creation_time: self.creation_time,
-            expiration_time: self.expiration_time,
-            file_name: self.file_name,
-            file_mtime: self.file_mtime,
-        };
-        let result = Self::execute(
-            self.ctx,
-            &self.mode,
-            &self.signers,
-            self.armor,
-            self.default_hash,
-            &extras,
-            input.as_ptr(),
-            output.as_ptr(),
-        );
+        let mut input = self.source.take()?;
+        let result = self.execute(input.as_ptr(), output.as_ptr());
         or_stream_error(result, &mut input)
     }
 
@@ -254,53 +268,41 @@ impl<'a, 'ctx> Signer<'a, 'ctx> {
     ///
     /// Stream failures surface as the original [`std::io::Error`], as in
     /// [`Signer::build`].
-    pub fn build_to_memory(self) -> Result<Vec<u8>> {
+    pub fn build_to_memory(mut self) -> Result<Vec<u8>> {
         if self.signers.is_empty() {
             return Err(crate::error::Error::NullPointer);
         }
-        let mut input = self.source.into_input()?;
+        let mut input = self.source.take()?;
         let output = Output::to_memory()?;
-        let extras = SignExtras {
-            compression: self.compression,
-            creation_time: self.creation_time,
-            expiration_time: self.expiration_time,
-            file_name: self.file_name,
-            file_mtime: self.file_mtime,
-        };
-        let result = Self::execute(
-            self.ctx,
-            &self.mode,
-            &self.signers,
-            self.armor,
-            self.default_hash,
-            &extras,
-            input.as_ptr(),
-            output.as_ptr(),
-        );
+        let result = self.execute(input.as_ptr(), output.as_ptr());
         or_stream_error(result, &mut input)?;
         output.into_bytes()
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn execute(
-        ctx: &Context,
-        mode: &Mode,
-        signers: &[SignerSpec],
-        armor: bool,
-        default_hash: Hash,
-        extras: &SignExtras,
-        input: ffi::rnp_input_t,
-        output: ffi::rnp_output_t,
-    ) -> Result<()> {
+    /// Create and run the sign op. The interface is the builder itself
+    /// plus the two stream handles — all configuration travels inside
+    /// `self`.
+    fn execute(&self, input: ffi::rnp_input_t, output: ffi::rnp_output_t) -> Result<()> {
         let mut op: ffi::rnp_op_sign_t = ptr::null_mut();
         unsafe {
-            let create = match mode {
-                Mode::Inline => check(ffi::rnp_op_sign_create(&mut op, ctx.ffi, input, output)),
+            let create = match self.mode {
+                Mode::Inline => check(ffi::rnp_op_sign_create(
+                    &mut op,
+                    self.ctx.ffi,
+                    input,
+                    output,
+                )),
                 Mode::Detached => check(ffi::rnp_op_sign_detached_create(
-                    &mut op, ctx.ffi, input, output,
+                    &mut op,
+                    self.ctx.ffi,
+                    input,
+                    output,
                 )),
                 Mode::Cleartext => check(ffi::rnp_op_sign_cleartext_create(
-                    &mut op, ctx.ffi, input, output,
+                    &mut op,
+                    self.ctx.ffi,
+                    input,
+                    output,
                 )),
             };
             if let Err(e) = create {
@@ -310,14 +312,14 @@ impl<'a, 'ctx> Signer<'a, 'ctx> {
                 return Err(e);
             }
 
-            for spec in signers {
+            for spec in &self.signers {
                 let mut sig_handle: ffi::rnp_op_sign_signature_t = ptr::null_mut();
                 check(ffi::rnp_op_sign_add_signature(
                     op,
                     spec.handle,
                     &mut sig_handle,
                 ))?;
-                let hash = spec.hash.unwrap_or(default_hash);
+                let hash = spec.hash.unwrap_or(self.options.default_hash);
                 let hash_c = CString::new(hash.as_str()).unwrap();
                 let _ = ffi::rnp_op_sign_signature_set_hash(sig_handle, hash_c.as_ptr());
                 if let Some(ct) = spec.creation_time {
@@ -328,26 +330,7 @@ impl<'a, 'ctx> Signer<'a, 'ctx> {
                 }
             }
 
-            let hash_c = CString::new(default_hash.as_str()).unwrap();
-            let _ = ffi::rnp_op_sign_set_hash(op, hash_c.as_ptr());
-            let _ = ffi::rnp_op_sign_set_armor(op, armor);
-
-            if let Some((alg, level)) = extras.compression {
-                let c = CString::new(alg.as_str()).unwrap();
-                let _ = ffi::rnp_op_sign_set_compression(op, c.as_ptr(), level as i32);
-            }
-            if let Some(t) = extras.creation_time {
-                let _ = ffi::rnp_op_sign_set_creation_time(op, t);
-            }
-            if let Some(t) = extras.expiration_time {
-                let _ = ffi::rnp_op_sign_set_expiration_time(op, t);
-            }
-            if let Some(name) = &extras.file_name {
-                let _ = ffi::rnp_op_sign_set_file_name(op, name.as_ptr());
-            }
-            if let Some(t) = extras.file_mtime {
-                let _ = ffi::rnp_op_sign_set_file_mtime(op, t);
-            }
+            self.options.apply(op);
 
             let exec_res = check(ffi::rnp_op_sign_execute(op));
             let _ = ffi::rnp_op_sign_destroy(op);
