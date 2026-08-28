@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Other
+
+- Collapse nested if flagged by clippy under -D warnings by @[object]
+- Flavor is the single source of truth for the vendored build by @[object]
+
 ### Fixed
 
 - Backport RSA short-MPI padding; unpin Botan to 3.13.0 by @[object]
