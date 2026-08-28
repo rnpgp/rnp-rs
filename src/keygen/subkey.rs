@@ -124,33 +124,18 @@ impl SubkeyBuilder {
 
 unsafe fn apply_subkey_setters(op: ffi::rnp_op_generate_t, b: &SubkeyBuilder) -> Result<()> {
     unsafe {
-        if let Some(n) = b.bits {
-            check(ffi::rnp_op_generate_set_bits(op, n))?;
-        }
-        if let Some(h) = b.hash {
-            let c = CString::new(h.as_str()).unwrap();
-            check(ffi::rnp_op_generate_set_hash(op, c.as_ptr()))?;
-        }
-        if let Some(q) = b.dsa_qbits {
-            check(ffi::rnp_op_generate_set_dsa_qbits(op, q))?;
-        }
-        if let Some(c) = b.curve {
-            let cs = CString::new(c.as_str()).unwrap();
-            check(ffi::rnp_op_generate_set_curve(op, cs.as_ptr()))?;
-        }
-        if let Some(exp) = b.expiration {
-            check(ffi::rnp_op_generate_set_expiration(op, exp))?;
-        }
-        for u in &b.usages {
-            let c = CString::new(u.as_str()).unwrap();
-            check(ffi::rnp_op_generate_add_usage(op, c.as_ptr()))?;
-        }
-        if let Some(cfg) = &b.protection {
-            super::apply_protection(op, cfg)?;
-        }
-        if b.request_password {
-            check(ffi::rnp_op_generate_set_request_password(op, true))?;
-        }
-        Ok(())
+        super::apply_generate_common(
+            op,
+            super::GenerateCommon {
+                bits: b.bits,
+                hash: b.hash,
+                dsa_qbits: b.dsa_qbits,
+                curve: b.curve,
+                expiration: b.expiration,
+                usages: &b.usages,
+                protection: b.protection.as_ref(),
+                request_password: b.request_password,
+            },
+        )
     }
 }

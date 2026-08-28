@@ -104,6 +104,58 @@ pub(crate) unsafe fn apply_protection(
 }
 
 // ---------------------------------------------------------------------------
+// Shared generate-op option replay
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Copy)]
+pub(crate) struct GenerateCommon<'a> {
+    pub(crate) bits: Option<u32>,
+    pub(crate) hash: Option<Hash>,
+    pub(crate) dsa_qbits: Option<u32>,
+    pub(crate) curve: Option<Curve>,
+    pub(crate) expiration: Option<u32>,
+    pub(crate) usages: &'a [KeyUsage],
+    pub(crate) protection: Option<&'a ProtectConfig>,
+    pub(crate) request_password: bool,
+}
+
+pub(crate) unsafe fn apply_generate_common(
+    op: ffi::rnp_op_generate_t,
+    common: GenerateCommon<'_>,
+) -> Result<()> {
+    unsafe {
+        if let Some(n) = common.bits {
+            check(ffi::rnp_op_generate_set_bits(op, n))?;
+        }
+        if let Some(h) = common.hash {
+            let c = CString::new(h.as_str()).unwrap();
+            check(ffi::rnp_op_generate_set_hash(op, c.as_ptr()))?;
+        }
+        if let Some(q) = common.dsa_qbits {
+            check(ffi::rnp_op_generate_set_dsa_qbits(op, q))?;
+        }
+        if let Some(c) = common.curve {
+            let cs = CString::new(c.as_str()).unwrap();
+            check(ffi::rnp_op_generate_set_curve(op, cs.as_ptr()))?;
+        }
+        if let Some(exp) = common.expiration {
+            check(ffi::rnp_op_generate_set_expiration(op, exp))?;
+        }
+        for u in common.usages {
+            let c = CString::new(u.as_str()).unwrap();
+            check(ffi::rnp_op_generate_add_usage(op, c.as_ptr()))?;
+        }
+        if let Some(cfg) = common.protection {
+            apply_protection(op, cfg)?;
+        }
+        if common.request_password {
+            check(ffi::rnp_op_generate_set_request_password(op, true))?;
+        }
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // JSON shortcut
 // ---------------------------------------------------------------------------
 
