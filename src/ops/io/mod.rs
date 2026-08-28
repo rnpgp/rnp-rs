@@ -77,6 +77,13 @@ impl ByteSource<'_> {
             ByteSource::Owned(input) => Ok(input),
         }
     }
+
+    /// Take the [`Input`] out, leaving an empty byte source behind. Lets a
+    /// consuming builder extract the input and still borrow itself for the
+    /// rest of the operation.
+    pub(crate) fn take(&mut self) -> crate::error::Result<Input> {
+        std::mem::replace(self, ByteSource::Bytes(b"")).into_input()
+    }
 }
 
 /// When an operation fails on a stream-backed input, prefer the recorded
