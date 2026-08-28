@@ -12,6 +12,16 @@ are the detailed audit trail for each feature area.
 
 ### Other
 
+- Release by @[object]
+- Collapse nested if flagged by clippy under -D warnings by @[object]
+- Add a front door for the Context surface by @[object]
+- Co-locate option state with FFI replay by @[object]
+- Promote MessageSource as the bytes-or-Input seam by @[object]
+- Flavor is the single source of truth for the vendored build by @[object]
+- Deepen the Sign op — builder is the config module by @[object]
+
+### Other
+
 - Collapse nested if flagged by clippy under -D warnings by @[object]
 - Add a front door for the Context surface by @[object]
 - Co-locate option state with FFI replay by @[object]
