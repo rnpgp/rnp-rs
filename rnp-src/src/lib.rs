@@ -669,10 +669,10 @@ fn collect_files(dir: &Path, extensions: &[&str], out: &mut Vec<PathBuf>) {
         let path = entry.path();
         if path.is_dir() {
             collect_files(&path, extensions, out);
-        } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-            if extensions.contains(&ext) {
-                out.push(path);
-            }
+        } else if let Some(ext) = path.extension().and_then(|e| e.to_str())
+            && extensions.contains(&ext)
+        {
+            out.push(path);
         }
     }
 }
