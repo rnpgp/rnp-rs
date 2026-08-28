@@ -7,6 +7,21 @@
 //! Callback installation lives on [`Context`] as a thin delegate to the
 //! callbacks registry; the trait definitions,
 //! holder types, and C-side thunks are in [`crate::callbacks`].
+//!
+//! ## Where the `Context` verbs live
+//!
+//! The `Context` surface is intentionally implemented near the domain it
+//! touches, not all in this file. Start here, then follow the concern:
+//!
+//! | Concern | Module | Examples |
+//! |---------|--------|----------|
+//! | key lookup/loading | `crate::key::lookup` | `find_key`, `load_keys` |
+//! | keyring management | [`crate::keyring`] | `save_keys`, `import_keys`, `unload_keys`, counts, identifiers |
+//! | callbacks | [`crate::callbacks`] | `set_password_provider`, `set_key_provider`, logging |
+//! | security profile | [`crate::security`] | security rules, features, password requests |
+//! | operation builders | [`crate::signature`], [`crate::encrypt`], `crate::verify` | sign, encrypt, decrypt, verify |
+//!
+//! That split is the implementation locality; this table is the front door.
 
 use crate::callbacks::Callbacks;
 use crate::error::{self, Result, check};
