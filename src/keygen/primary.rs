@@ -268,30 +268,22 @@ impl KeyBuilder {
 /// Apply all setters from `b` to the op handle.
 unsafe fn apply_setters(op: ffi::rnp_op_generate_t, b: &KeyBuilder) -> Result<()> {
     unsafe {
-        if let Some(n) = b.bits {
-            check(ffi::rnp_op_generate_set_bits(op, n))?;
-        }
-        if let Some(h) = b.hash {
-            let c = CString::new(h.as_str()).unwrap();
-            check(ffi::rnp_op_generate_set_hash(op, c.as_ptr()))?;
-        }
-        if let Some(q) = b.dsa_qbits {
-            check(ffi::rnp_op_generate_set_dsa_qbits(op, q))?;
-        }
-        if let Some(c) = b.curve {
-            let cs = CString::new(c.as_str()).unwrap();
-            check(ffi::rnp_op_generate_set_curve(op, cs.as_ptr()))?;
-        }
+        super::apply_generate_common(
+            op,
+            super::GenerateCommon {
+                bits: b.bits,
+                hash: b.hash,
+                dsa_qbits: b.dsa_qbits,
+                curve: b.curve,
+                expiration: b.expiration,
+                usages: &b.usages,
+                protection: b.protection.as_ref(),
+                request_password: b.request_password,
+            },
+        )?;
         if let Some(uid) = &b.userid {
             let c = CString::new(uid.as_str()).map_err(|_| error::Error::NulByte)?;
             check(ffi::rnp_op_generate_set_userid(op, c.as_ptr()))?;
-        }
-        if let Some(exp) = b.expiration {
-            check(ffi::rnp_op_generate_set_expiration(op, exp))?;
-        }
-        for u in &b.usages {
-            let c = CString::new(u.as_str()).unwrap();
-            check(ffi::rnp_op_generate_add_usage(op, c.as_ptr()))?;
         }
         for h in &b.pref_hashes {
             let c = CString::new(h.as_str()).unwrap();
@@ -308,12 +300,6 @@ unsafe fn apply_setters(op: ffi::rnp_op_generate_t, b: &KeyBuilder) -> Result<()
         if let Some(ks) = &b.pref_keyserver {
             let c = CString::new(ks.as_str()).map_err(|_| error::Error::NulByte)?;
             check(ffi::rnp_op_generate_set_pref_keyserver(op, c.as_ptr()))?;
-        }
-        if let Some(cfg) = &b.protection {
-            super::apply_protection(op, cfg)?;
-        }
-        if b.request_password {
-            check(ffi::rnp_op_generate_set_request_password(op, true))?;
         }
         #[cfg(feature = "crypto-refresh")]
         if b.v6 {
