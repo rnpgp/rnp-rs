@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Other
 
 - Release by @[object]
+
+### Other
+
+- Release by @[object]
 - Collapse nested if flagged by clippy under -D warnings by @[object]
 - Flavor is the single source of truth for the vendored build by @[object]
 
