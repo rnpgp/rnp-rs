@@ -38,10 +38,73 @@ pub const RNP_VERSION: &str = "0.18.1";
 ///
 /// Pin to a specific commit for reproducibility. Bump when a new librnp
 /// release cuts.
-#[cfg(any(feature = "pqc", feature = "crypto-refresh"))]
 const RNP_HEAD_REF: &str = "main";
 
 const BZIP2_VERSION: &str = "1.0.8";
+
+// ---------------------------------------------------------------------
+// Flavor — the single source of truth for "which librnp is this build?".
+//
+// Historically the flavor lived in three hand-agreed places (cfg-gated
+// source choice, hand-written install-prefix string, reported version
+// string); when they disagreed, cached artifacts from one flavor were
+// served to another (the stale-PQC-cache and unpatched-cache bugs). The
+// enum makes the disagreement impossible: every downstream decision —
+// cache directory, reported version, source preparation — is derived
+// here, in one match.
+// ---------------------------------------------------------------------
+
+/// Which librnp source a vendored build compiles, plus its backport
+/// revision. Derived once from the crate's Cargo features; every
+/// flavor-dependent decision is derived from the value, never from the
+/// features again.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Flavor {
+    /// The 0.18.1 release tarball with backport level 1 applied (the
+    /// short-RSA-MPI padding fix for Botan 3.13,
+    /// `patches/rsa-short-mpi-botan-3.13.patch`).
+    Release0181B1,
+    /// librnp HEAD (`RNP_HEAD_REF`) for the PQC / crypto-refresh flavors;
+    /// its API surface drifts, so callers fall back to runtime bindgen.
+    Head,
+}
+
+impl Flavor {
+    /// Resolve the flavor from this crate's Cargo features. The one place
+    /// `cfg!` is consulted for flavor purposes.
+    pub fn from_features() -> Self {
+        if cfg!(feature = "pqc") || cfg!(feature = "crypto-refresh") {
+            Flavor::Head
+        } else {
+            Flavor::Release0181B1
+        }
+    }
+
+    /// Install directory name under the build prefix. Keyed by source AND
+    /// backport level so two flavors (or two patch levels) never share a
+    /// cached librnp.a / header set.
+    pub fn cache_dir(self) -> &'static str {
+        match self {
+            Flavor::Release0181B1 => "rnp-0.18.1-b1",
+            Flavor::Head => "rnp-flavored",
+        }
+    }
+
+    /// Version string reported in [`Installed::librnp_version`]. Drives
+    /// pregenerated-bindings selection in dependents: `"head"` always
+    /// means "API surface drifts, bind at runtime".
+    pub fn librnp_version(self) -> &'static str {
+        match self {
+            Flavor::Release0181B1 => RNP_VERSION,
+            Flavor::Head => "head",
+        }
+    }
+
+    /// Whether this flavor builds from the moving HEAD ref.
+    pub fn is_head(self) -> bool {
+        matches!(self, Flavor::Head)
+    }
+}
 
 pub fn build() -> Installed {
     let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"));
@@ -112,16 +175,11 @@ pub fn build() -> Installed {
     }
 
     // --- 5. librnp ---
-    // The install prefix is keyed by flavor and patch revision: a
-    // plain-0.18.1 artifact and a PQC/crypto-refresh-HEAD artifact have
-    // different headers and symbol sets, and each backport level changes
-    // the built library — they must never share a cache. Building one and
-    // then the other in the same OUT_DIR would reuse a stale
-    // librnp.a/header. b1 = short-RSA-MPI backport for Botan 3.13.
-    #[cfg(not(any(feature = "pqc", feature = "crypto-refresh")))]
-    let rnp_prefix = prefix.join("rnp-0.18.1-b1");
-    #[cfg(any(feature = "pqc", feature = "crypto-refresh"))]
-    let rnp_prefix = prefix.join("rnp-flavored");
+    // One flavor value decides everything below: cache directory (keyed
+    // by source + backport level so flavors never share artifacts),
+    // reported version, and which source tree is prepared.
+    let flavor = Flavor::from_features();
+    let rnp_prefix = prefix.join(flavor.cache_dir());
     if !rnp_prefix.join("lib").join("librnp.a").exists() {
         let mut deps = Deps::new();
         deps.push("botan", botan_prefix.clone());
@@ -129,18 +187,15 @@ pub fn build() -> Installed {
         deps.push("zlib", zlib_prefix.clone());
         deps.push("bzip2", bzip2_prefix.clone());
 
-        eprintln!("rnp-src: building librnp {RNP_VERSION}...");
+        eprintln!(
+            "rnp-src: building librnp {} ({:?})...",
+            flavor.librnp_version(),
+            flavor
+        );
         build_librnp(&src_dir, &rnp_prefix, &deps);
     }
 
-    // Which librnp flavor was built: the 0.18.1 release tarball by default,
-    // or HEAD when pqc/crypto-refresh is on. Callers use this to decide
-    // whether pregenerated bindgen output is applicable ("head" always
-    // falls back to runtime bindgen since its API surface drifts).
-    #[cfg(not(any(feature = "pqc", feature = "crypto-refresh")))]
-    let librnp_version = RNP_VERSION.to_string();
-    #[cfg(any(feature = "pqc", feature = "crypto-refresh"))]
-    let librnp_version = "head".to_string();
+    let librnp_version = flavor.librnp_version().to_string();
 
     let mut deps = Deps::new();
     deps.push("botan", botan_prefix.clone());
@@ -448,7 +503,6 @@ fn build_bzip2(src_dir: &Path, prefix: &Path) {
 
 /// Download + extract the librnp release tarball (default path), then
 /// apply the backport patches it needs.
-#[cfg(not(any(feature = "pqc", feature = "crypto-refresh")))]
 fn prepare_librnp_release(src_dir: &Path) -> PathBuf {
     let rnp_src = src_dir.join(format!("rnp-v{RNP_VERSION}"));
     if !rnp_src.exists() {
@@ -465,7 +519,6 @@ fn prepare_librnp_release(src_dir: &Path) -> PathBuf {
 /// tree. Idempotent via a stamp file, so a cached extraction from before a
 /// patch was added still gets patched (the paired install-prefix rename in
 /// [`build`] then forces a rebuild of librnp itself).
-#[cfg(not(any(feature = "pqc", feature = "crypto-refresh")))]
 fn apply_backports(rnp_src: &Path) {
     const STAMP: &str = ".rnp-backports-b1";
     if rnp_src.join(STAMP).exists() {
@@ -502,7 +555,6 @@ fn apply_backports(rnp_src: &Path) {
 /// Clone librnp HEAD (or the pinned ref) for PQC/crypto-refresh builds.
 /// librnp 0.18.1's PQC + crypto-refresh code paths don't compile against
 /// Botan 3.12+; HEAD has the fix.
-#[cfg(any(feature = "pqc", feature = "crypto-refresh"))]
 fn prepare_librnp_head(src_dir: &Path) -> PathBuf {
     let rnp_src = src_dir.join("rnp-head");
     if !rnp_src.exists() {
@@ -547,7 +599,6 @@ fn prepare_librnp_head(src_dir: &Path) -> PathBuf {
 /// after the first existing `#include "botan/...` line.
 ///
 /// Idempotent: re-running on an already-patched tree is a no-op.
-#[cfg(any(feature = "pqc", feature = "crypto-refresh"))]
 fn patch_librnp_botan_includes(rnp_src: &Path) {
     /// (Botan type prefix, header to include)
     ///
@@ -610,7 +661,6 @@ fn patch_librnp_botan_includes(rnp_src: &Path) {
     }
 }
 
-#[cfg(any(feature = "pqc", feature = "crypto-refresh"))]
 fn collect_files(dir: &Path, extensions: &[&str], out: &mut Vec<PathBuf>) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
@@ -628,14 +678,13 @@ fn collect_files(dir: &Path, extensions: &[&str], out: &mut Vec<PathBuf>) {
 }
 
 fn build_librnp(src_dir: &Path, prefix: &Path, deps: &Deps) {
-    // Pick the librnp source: 0.18.1 release tarball by default, or
-    // HEAD when pqc/crypto-refresh is on (librnp 0.18.1 has EC_Group /
-    // EC_Point code paths that don't compile against Botan 3.12's
-    // opaque types; HEAD has the fix).
-    #[cfg(not(any(feature = "pqc", feature = "crypto-refresh")))]
-    let rnp_src = prepare_librnp_release(src_dir);
-    #[cfg(any(feature = "pqc", feature = "crypto-refresh"))]
-    let rnp_src = prepare_librnp_head(src_dir);
+    // Which source tree: the release tarball (+ backports) or HEAD —
+    // derived from the flavor, not re-derived from cfg!.
+    let rnp_src = if Flavor::from_features().is_head() {
+        prepare_librnp_head(src_dir)
+    } else {
+        prepare_librnp_release(src_dir)
+    };
 
     let (cc, cxx) = if cfg!(target_os = "macos") {
         ("/usr/bin/clang", "/usr/bin/clang++")
@@ -848,4 +897,46 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
         }
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------------
+// Flavor mapping tests — the flavor → {cache dir, version, source} table
+// is pure, so it is testable without compiling any C++.
+// ---------------------------------------------------------------------
+
+#[cfg(test)]
+mod flavor_tests {
+    use super::*;
+
+    #[test]
+    fn release_flavor_names_its_cache_and_version() {
+        let f = Flavor::Release0181B1;
+        assert_eq!(f.cache_dir(), "rnp-0.18.1-b1");
+        assert_eq!(f.librnp_version(), RNP_VERSION);
+        assert!(!f.is_head());
+    }
+
+    #[test]
+    fn head_flavor_falls_back_to_runtime_bindgen_version() {
+        let f = Flavor::Head;
+        assert_eq!(f.librnp_version(), "head");
+        assert!(f.is_head());
+    }
+
+    #[test]
+    fn cache_dirs_never_collide_across_flavors() {
+        // Two flavors sharing a cache dir is the stale-artifact bug class
+        // this enum exists to prevent.
+        let dirs = [Flavor::Release0181B1.cache_dir(), Flavor::Head.cache_dir()];
+        assert_ne!(dirs[0], dirs[1]);
+    }
+
+    #[test]
+    fn from_features_matches_the_compiled_flavor() {
+        // Under a default build this must be the release flavor; under
+        // pqc/crypto-refresh it must be HEAD. The cfg! consult and the
+        // enum are the same decision made once.
+        let expect_head = cfg!(feature = "pqc") || cfg!(feature = "crypto-refresh");
+        assert_eq!(Flavor::from_features().is_head(), expect_head);
+    }
 }
