@@ -10,6 +10,10 @@ are the detailed audit trail for each feature area.
 
 ## [Unreleased]
 
+### Added
+
+- Sync vendored HEAD flavor to librnp main (pin, clone-sync, drop json-c) by @[object]
+
 ### Other
 
 - Release by @[object]
