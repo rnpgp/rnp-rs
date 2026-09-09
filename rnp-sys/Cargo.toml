@@ -1,6 +1,6 @@
 [package]
 name = "rnp-sys"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 rust-version = "1.88"
 authors = ["Ribose Inc. <open.source@ribose.com>"]
@@ -55,7 +55,7 @@ botan-sys-detect = ["dep:botan-sys"]
 [build-dependencies]
 # Build-time library that compiles the whole C/C++ stack (botan-rs
 # `botan-src` pattern: the -sys crate's build script calls rnp_src::build()).
-rnp-src = { version = "0.2", path = "../rnp-src", optional = true }
+rnp-src = { version = "0.3", path = "../rnp-src", optional = true }
 # Optional, only with the `botan-sys-detect` feature. Version follows
 # rnp-src's botan-src pin so a detected graph shares one Botan version.
 botan-sys = { version = "1.20260811", optional = true }

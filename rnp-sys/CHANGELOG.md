@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Sync vendored HEAD flavor to librnp main (pin, clone-sync, drop json-c) by @[object]
+
 ### Other
 
 - Make docs.rs build work and clean every rustdoc warning by @[object]
