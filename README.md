@@ -550,8 +550,14 @@ backport). On Windows, use **MSYS2 UCRT64** (`mingw-w64-ucrt-x86_64-gcc`,
 | Feature combo | librnp | Botan | When to use |
 |---|---|---|---|
 | `vendored` | 0.18.1 (stable tarball + backports) | 3.13.0 (full) | Default — all RFC 9580 algorithms |
-| `vendored` + `pqc` | HEAD (git clone) | 3.13.0 (PQC modules enabled) | ML-KEM / ML-DSA / SLH-DSA signing + encryption |
-| `vendored` + `crypto-refresh` | HEAD (git clone) | 3.13.0 (full) | v6 keys, crypto-refresh algorithm names |
+| `vendored` + `pqc` | `main` @ `470695b9` (pinned clone) | 3.13.0 (PQC modules enabled) | ML-KEM / ML-DSA / SLH-DSA signing + encryption |
+| `vendored` + `crypto-refresh` | `main` @ `470695b9` (pinned clone) | 3.13.0 (full) | v6 keys, crypto-refresh algorithm names |
+
+The HEAD flavor builds from a **pinned** upstream commit (see
+`RNP_HEAD_REF` in `rnp-src/src/lib.rs`) that is fetched and checked out on
+every build — cached clones track the pin. Unlike the 0.18.1 flavor, it
+does not compile json-c: upstream `main` vendors nlohmann/json as a single
+header (rnpgp/rnp@4f5c4e6e).
 
 The 0.18.1 tarball carries one backport:
 `patches/rsa-short-mpi-botan-3.13.patch` in `rnp-src` pads short

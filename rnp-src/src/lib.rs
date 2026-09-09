@@ -30,15 +30,22 @@ use links::{CmakeDep, Deps, JSON_C, ZLIB};
 /// librnp version this crate compiles by default (release tarball).
 pub const RNP_VERSION: &str = "0.18.1";
 
-/// When `pqc` or `crypto-refresh` Cargo feature is on, rnp-src clones
-/// librnp HEAD instead of using the 0.18.1 release tarball. librnp 0.18.1
-/// has EC_Group/EC_Point code paths (gated behind ENABLE_PQC=ON /
-/// ENABLE_CRYPTO_REFRESH=ON) that are incompatible with Botan 3.12's
-/// opaque (PIMPL) types; HEAD has the fixes.
+/// When `pqc` or `crypto-refresh` Cargo feature is on, rnp-src builds
+/// librnp from upstream `main` instead of the 0.18.1 release tarball.
+/// librnp 0.18.1 has EC_Group/EC_Point code paths (gated behind
+/// ENABLE_PQC=ON / ENABLE_CRYPTO_REFRESH=ON) that are incompatible with
+/// Botan 3.12's opaque (PIMPL) types; `main` has the fixes.
 ///
-/// Pin to a specific commit for reproducibility. Bump when a new librnp
-/// release cuts.
-const RNP_HEAD_REF: &str = "main";
+/// Pinned to a specific commit for reproducible builds: `main` moves, and
+/// an unpinned ref means a fresh build gets whatever landed that day —
+/// including regressions nobody validated against this crate. The pinned
+/// clone is synced (fetch + hard checkout) on every build, and the flavor
+/// cache directory embeds the pin's short SHA, so bumping this constant
+/// automatically invalidates stale cached artifacts.
+///
+/// To bump: update the SHA to the new upstream tip, run the
+/// vendored+pqc build (CI job "pqc + crypto-refresh" validates), ship.
+const RNP_HEAD_REF: &str = "470695b98abe8a427fc47847acb387c089cb156d";
 
 const BZIP2_VERSION: &str = "1.0.8";
 
@@ -80,14 +87,23 @@ impl Flavor {
         }
     }
 
-    /// Install directory name under the build prefix. Keyed by source AND
-    /// backport level so two flavors (or two patch levels) never share a
-    /// cached librnp.a / header set.
-    pub fn cache_dir(self) -> &'static str {
+    /// Install directory name under the build prefix. Keyed by source,
+    /// backport level, and (for HEAD) the exact pinned commit — so two
+    /// flavors, two patch levels, or two pins never share a cached
+    /// librnp.a / header set.
+    pub fn cache_dir(self) -> String {
         match self {
-            Flavor::Release0181B1 => "rnp-0.18.1-b1",
-            Flavor::Head => "rnp-flavored",
+            Flavor::Release0181B1 => "rnp-0.18.1-b1".to_string(),
+            Flavor::Head => format!("rnp-head-{}", &RNP_HEAD_REF[..8]),
         }
+    }
+
+    /// Whether this flavor's librnp needs json-c. librnp `main` vendored
+    /// nlohmann/json as a single header (upstream 4f5c4e6e, "Remove
+    /// json-c mentions from the codebase") and no longer links json-c;
+    /// the 0.18.1 release tarball still requires it.
+    pub fn needs_json_c(self) -> bool {
+        matches!(self, Flavor::Release0181B1)
     }
 
     /// Version string reported in [`Installed::librnp_version`]. Drives
@@ -154,9 +170,16 @@ pub fn build() -> Installed {
     eprintln!("rnp-src: building Botan via botan-src crate...");
     let botan_prefix = build_botan(&prefix);
 
+    // One flavor value decides everything below: which deps are built,
+    // the cache directory (keyed by source + backport level + pin), the
+    // reported version, and which source tree is prepared.
+    let flavor = Flavor::from_features();
+
     // --- 2/3. cmake-based deps (json-c, zlib) ---
+    // json-c is only needed by the 0.18.1 release tarball; librnp main
+    // vendors nlohmann/json (see Flavor::needs_json_c).
     let jsonc_prefix = prefix.join("json-c");
-    if !jsonc_prefix.join("lib").join("libjson-c.a").exists() {
+    if flavor.needs_json_c() && !jsonc_prefix.join("lib").join("libjson-c.a").exists() {
         eprintln!("rnp-src: building json-c {}...", JSON_C.version);
         cmake_dep_build(&JSON_C, &src_dir, &jsonc_prefix);
     }
@@ -175,15 +198,13 @@ pub fn build() -> Installed {
     }
 
     // --- 5. librnp ---
-    // One flavor value decides everything below: cache directory (keyed
-    // by source + backport level so flavors never share artifacts),
-    // reported version, and which source tree is prepared.
-    let flavor = Flavor::from_features();
     let rnp_prefix = prefix.join(flavor.cache_dir());
     if !rnp_prefix.join("lib").join("librnp.a").exists() {
         let mut deps = Deps::new();
         deps.push("botan", botan_prefix.clone());
-        deps.push("jsonc", jsonc_prefix.clone());
+        if flavor.needs_json_c() {
+            deps.push("jsonc", jsonc_prefix.clone());
+        }
         deps.push("zlib", zlib_prefix.clone());
         deps.push("bzip2", bzip2_prefix.clone());
 
@@ -199,7 +220,9 @@ pub fn build() -> Installed {
 
     let mut deps = Deps::new();
     deps.push("botan", botan_prefix.clone());
-    deps.push("jsonc", jsonc_prefix.clone());
+    if flavor.needs_json_c() {
+        deps.push("jsonc", jsonc_prefix.clone());
+    }
     deps.push("zlib", zlib_prefix.clone());
     deps.push("bzip2", bzip2_prefix.clone());
 
@@ -207,6 +230,7 @@ pub fn build() -> Installed {
         lib_dir: rnp_prefix.join("lib"),
         include_dir: rnp_prefix.join("include"),
         librnp_version,
+        flavor,
         dep_lib_dirs: deps.lib_dirs().collect(),
     }
 }
@@ -220,6 +244,9 @@ pub struct Installed {
     pub include_dir: PathBuf,
     /// `"0.18.1"` or `"head"` — which librnp source was built.
     pub librnp_version: String,
+    /// Which flavor was built; lets dependents derive flavor-dependent
+    /// decisions (e.g. whether json-c is linked) from the same value.
+    pub flavor: Flavor,
     /// Per-dependency lib dirs (botan, json-c, zlib, bzip2) for the
     /// caller's `-L` link-search emissions.
     pub dep_lib_dirs: Vec<PathBuf>,
@@ -558,37 +585,65 @@ fn apply_backports(rnp_src: &Path) {
 fn prepare_librnp_head(src_dir: &Path) -> PathBuf {
     let rnp_src = src_dir.join("rnp-head");
     if !rnp_src.exists() {
-        eprintln!("rnp-src: cloning librnp HEAD ({RNP_HEAD_REF}) for PQC/crypto-refresh...");
+        eprintln!("rnp-src: cloning librnp (shallow)...");
         run(
             Command::new("git")
-                .args([
-                    "clone",
-                    "--depth",
-                    "1",
-                    "--branch",
-                    RNP_HEAD_REF,
-                    "--recurse-submodules",
-                    "https://github.com/rnpgp/rnp.git",
-                ])
+                .args(["clone", "--depth", "1", "--recurse-submodules"])
+                .arg("https://github.com/rnpgp/rnp.git")
                 .arg(&rnp_src),
-            "git clone rnp HEAD",
-        );
-        // Apply local compatibility patches. Botan 3.11+ made several
-        // types opaque (PIMPL): EC_Group, EC_Point, BigInt, EC_AffinePoint.
-        // Code that references these types by name needs to #include the
-        // corresponding header explicitly — but older Botan's headers
-        // transitively pulled them in via ecdh.h, so librnp HEAD's source
-        // doesn't always include them. Scan the crypto source tree and
-        // inject any missing includes.
-        patch_librnp_botan_includes(&rnp_src);
-
-        eprintln!("rnp-src: patched librnp HEAD for Botan 3.12+ include visibility");
-    } else {
-        eprintln!(
-            "rnp-src: reusing existing librnp HEAD clone at {}",
-            rnp_src.display()
+            "git clone librnp",
         );
     }
+
+    // Sync the clone to the pin on every build — a cached clone from an
+    // earlier pin must not keep serving stale source. `--force` discards
+    // the Botan-include patch modifications, which are re-applied below
+    // (the patcher is idempotent, so a no-op on already-patched trees).
+    run(
+        Command::new("git").args(["-C"]).arg(&rnp_src).args([
+            "fetch",
+            "--depth",
+            "1",
+            "origin",
+            RNP_HEAD_REF,
+        ]),
+        "git fetch pinned librnp commit",
+    );
+    run(
+        Command::new("git").args(["-C"]).arg(&rnp_src).args([
+            "checkout",
+            "--force",
+            "--detach",
+            RNP_HEAD_REF,
+        ]),
+        "git checkout pinned librnp commit",
+    );
+    run(
+        Command::new("git")
+            .args(["-C"])
+            .arg(&rnp_src)
+            .args(["submodule", "sync", "--recursive"]),
+        "git submodule sync",
+    );
+    run(
+        Command::new("git").args(["-C"]).arg(&rnp_src).args([
+            "submodule",
+            "update",
+            "--init",
+            "--recursive",
+        ]),
+        "git submodule update",
+    );
+
+    // Local compatibility patches. Botan 3.11+ made several types opaque
+    // (PIMPL): EC_Group, EC_Point, BigInt, EC_AffinePoint. Code that
+    // references these types by name needs to #include the corresponding
+    // header explicitly — older Botan headers transitively pulled them in
+    // via ecdh.h, so librnp source doesn't always include them. Scan the
+    // crypto source tree and inject any missing includes. Idempotent.
+    patch_librnp_botan_includes(&rnp_src);
+    eprintln!("rnp-src: librnp HEAD synced to {RNP_HEAD_REF}");
+
     rnp_src
 }
 
@@ -914,13 +969,21 @@ mod flavor_tests {
         assert_eq!(f.cache_dir(), "rnp-0.18.1-b1");
         assert_eq!(f.librnp_version(), RNP_VERSION);
         assert!(!f.is_head());
+        assert!(f.needs_json_c(), "0.18.1 tarball links json-c");
     }
 
     #[test]
-    fn head_flavor_falls_back_to_runtime_bindgen_version() {
+    fn head_flavor_reports_head_and_pins_its_cache() {
         let f = Flavor::Head;
         assert_eq!(f.librnp_version(), "head");
         assert!(f.is_head());
+        // The cache dir embeds the pin's short SHA: bumping RNP_HEAD_REF
+        // automatically invalidates cached artifacts from the old pin.
+        assert_eq!(f.cache_dir(), format!("rnp-head-{}", &RNP_HEAD_REF[..8]));
+        assert!(
+            !f.needs_json_c(),
+            "librnp main vendors nlohmann/json; no json-c"
+        );
     }
 
     #[test]
@@ -938,5 +1001,13 @@ mod flavor_tests {
         // enum are the same decision made once.
         let expect_head = cfg!(feature = "pqc") || cfg!(feature = "crypto-refresh");
         assert_eq!(Flavor::from_features().is_head(), expect_head);
+    }
+
+    #[test]
+    fn head_pin_is_a_full_sha() {
+        // A short ref would make the fetch/checkout in
+        // prepare_librnp_head ambiguous and break the 8-char cache key.
+        assert_eq!(RNP_HEAD_REF.len(), 40);
+        assert!(RNP_HEAD_REF.chars().all(|c| c.is_ascii_hexdigit()));
     }
 }

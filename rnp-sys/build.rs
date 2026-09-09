@@ -123,6 +123,10 @@ struct LibrnpLocation {
     /// for System/Explicit; populated by Vendored to surface per-dep
     /// install prefixes (Botan, json-c, zlib, bzip2).
     extra_lib_dirs: Vec<PathBuf>,
+    /// Vendored mode only: whether json-c was built and must be linked.
+    /// False for the HEAD flavor — librnp main vendors nlohmann/json
+    /// (upstream 4f5c4e6e) and no longer links json-c.
+    link_json_c: bool,
     /// Library names to link, with mode-appropriate prefix. When non-empty,
     /// `emit_link_directives` iterates these instead of falling back to
     /// the single hardcoded `dylib=rnp`. Populated by pkg-config so
@@ -170,6 +174,7 @@ fn locate_vendored() -> LibrnpLocation {
         include_dir: installed.include_dir,
         lib_dir: Some(installed.lib_dir),
         link_mode: LinkMode::Vendored,
+        link_json_c: installed.flavor.needs_json_c(),
         extra_lib_dirs: installed.dep_lib_dirs,
         extra_link_libs: Vec::new(),
     }
@@ -207,6 +212,7 @@ fn locate_explicit() -> Option<LibrnpLocation> {
         lib_dir,
         link_mode: LinkMode::Explicit,
         librnp_version: None,
+        link_json_c: false,
         extra_lib_dirs: Vec::new(),
         extra_link_libs: Vec::new(),
     })
@@ -237,6 +243,7 @@ fn locate_via_pkg_config() -> Option<LibrnpLocation> {
         lib_dir,
         link_mode: LinkMode::System,
         librnp_version: None,
+        link_json_c: false,
         extra_lib_dirs: lib.link_paths.clone(),
         extra_link_libs,
     })
@@ -311,6 +318,7 @@ fn locate_via_hardcoded_paths() -> LibrnpLocation {
         lib_dir,
         link_mode: LinkMode::System,
         librnp_version: None,
+        link_json_c: false,
         extra_lib_dirs: Vec::new(),
         extra_link_libs,
     }
@@ -464,7 +472,9 @@ fn emit_link_directives(loc: &LibrnpLocation) {
             println!("cargo:rustc-link-lib=static=rnp");
             println!("cargo:rustc-link-lib=static=sexpp");
             println!("cargo:rustc-link-lib=static=botan-3");
-            println!("cargo:rustc-link-lib=static=json-c");
+            if loc.link_json_c {
+                println!("cargo:rustc-link-lib=static=json-c");
+            }
             println!("cargo:rustc-link-lib=static=z");
             println!("cargo:rustc-link-lib=static=bz2");
 
@@ -479,10 +489,13 @@ fn emit_link_directives(loc: &LibrnpLocation) {
             // Windows system libs needed transitively by the vendored deps'
             // static archives:
             //   - advapi32: json-c's random_seed.c (CryptAcquireContext,
-            //     CryptGenRandom, CryptReleaseContext)
+            //     CryptGenRandom, CryptReleaseContext) — only when json-c
+            //     is linked (0.18.1 flavor)
             //   - ws2_32 / crypt32: Botan's Winsock + CryptoAPI usage
             if cfg!(target_os = "windows") {
-                println!("cargo:rustc-link-lib=dylib=advapi32");
+                if loc.link_json_c {
+                    println!("cargo:rustc-link-lib=dylib=advapi32");
+                }
                 println!("cargo:rustc-link-lib=dylib=ws2_32");
                 println!("cargo:rustc-link-lib=dylib=crypt32");
             }
