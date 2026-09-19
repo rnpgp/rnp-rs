@@ -17,14 +17,19 @@
 //! the cheapest possible proof that the FFI is wired.
 
 use std::ffi::CStr;
+
+use rnp_sys::rnp_version_string;
+
+// The imports below serve only the vendored-gated tests, mirroring their
+// #[cfg(feature = "vendored")] gates — otherwise a default-feature build
+// warns about unused imports.
+#[cfg(feature = "vendored")]
+use std::ffi::CString;
+#[cfg(feature = "vendored")]
 use std::ptr;
 
-use std::ffi::CString;
-
-use rnp_sys::{
-    rnp_buffer_destroy, rnp_ffi_create, rnp_ffi_destroy, rnp_get_default_homedir,
-    rnp_version_string,
-};
+#[cfg(feature = "vendored")]
+use rnp_sys::{rnp_buffer_destroy, rnp_ffi_create, rnp_ffi_destroy, rnp_get_default_homedir};
 
 /// `rnp_version_string()` returns a non-null C string identifying the linked
 /// librnp. The pointer lives for the process lifetime.
