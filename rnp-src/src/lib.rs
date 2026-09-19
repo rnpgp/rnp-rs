@@ -51,6 +51,20 @@ const RNP_HEAD_REF: &str = "470695b98abe8a427fc47847acb387c089cb156d";
 
 const BZIP2_VERSION: &str = "1.0.8";
 
+/// bzip2 tarball candidates: sourceware first, Debian source pool as the
+/// mirror. Verified byte-identical for 1.0.8 (sha256
+/// ab5a03176ee106d3f0fa90e381da478ddae405918153cca248e682cd0c4a2269) and
+/// extracting to the same top-level `bzip2-1.0.8/` directory. The 502
+/// outage of the single origin took down every CI leg at once (#99).
+fn bzip2_tarball_candidates() -> Vec<String> {
+    vec![
+        format!("https://sourceware.org/pub/bzip2/bzip2-{BZIP2_VERSION}.tar.gz"),
+        format!(
+            "https://deb.debian.org/debian/pool/main/b/bzip2/bzip2_{BZIP2_VERSION}.orig.tar.gz"
+        ),
+    ]
+}
+
 // ---------------------------------------------------------------------
 // Flavor — the single source of truth for "which librnp is this build?".
 //
@@ -359,7 +373,7 @@ fn append_cross_passthrough(cmd: &mut Command) {
 fn cmake_dep_build(dep: &CmakeDep, src_root: &Path, prefix: &Path) {
     let src = dep.source_dir(src_root);
     if !src.exists() {
-        download_and_extract(&dep.url(), src_root);
+        download_and_extract(&[dep.url()], src_root);
     }
 
     let build_dir = dep.build_dir(src_root);
@@ -455,8 +469,7 @@ fn apply_lib_aliases(aliases: &[(&str, &str)], lib_dir: &Path, dep_name: &str) {
 fn build_bzip2(src_dir: &Path, prefix: &Path) {
     let bzip2_src = src_dir.join(format!("bzip2-{BZIP2_VERSION}"));
     if !bzip2_src.exists() {
-        let url = format!("https://sourceware.org/pub/bzip2/bzip2-{BZIP2_VERSION}.tar.gz");
-        download_and_extract(&url, src_dir);
+        download_and_extract(&bzip2_tarball_candidates(), src_dir);
     }
 
     // Honor CC from the environment (cross builds point it at the target
@@ -529,7 +542,7 @@ fn prepare_librnp_release(src_dir: &Path) -> PathBuf {
         let url = format!(
             "https://github.com/rnpgp/rnp/releases/download/v{RNP_VERSION}/rnp-v{RNP_VERSION}.tar.gz"
         );
-        download_and_extract(&url, src_dir);
+        download_and_extract(&[url], src_dir);
     }
     apply_backports(&rnp_src);
     rnp_src
@@ -840,13 +853,30 @@ fn nproc() -> String {
         .unwrap_or_else(|| "4".to_string())
 }
 
-fn download_and_extract(url: &str, dest: &Path) {
+fn download_and_extract(candidates: &[String], dest: &Path) {
     // Pure-Rust download path: no curl, no tar in PATH required. This
     // matters for Windows + MSYS2 UCRT64 (MSYS2 has them, but other
     // Windows toolchains may not) and minimal Linux images.
     //
-    // Retry up to 5 times with 2s backoff to absorb transient 503s from
-    // upstream mirrors (sourceware, github-releases, s3).
+    // Candidates are tried in order: each origin gets the full retry
+    // budget (5 attempts, 2s backoff) to absorb transient 503s, and only
+    // then does the next mirror get a chance — so a dead origin (the
+    // sourceware 502 outage that took every CI leg down at once, #99)
+    // costs its retries, not the build.
+    for url in candidates {
+        if let Some(bytes) = download_with_retries(url) {
+            extract_tarball_from(&bytes, dest, url);
+            return;
+        }
+        eprintln!("rnp-src: all retries against {url} failed; trying next mirror (if any)");
+    }
+    panic!(
+        "rnp-src: failed to download from any of the {} candidate URL(s) after retries",
+        candidates.len()
+    );
+}
+
+fn download_with_retries(url: &str) -> Option<Vec<u8>> {
     let mut last_err: Option<String> = None;
     let mut body: Option<Vec<u8>> = None;
     for attempt in 1..=5 {
@@ -880,13 +910,17 @@ fn download_and_extract(url: &str, dest: &Path) {
         eprintln!("rnp-src: download {url} failed (attempt {attempt}); retrying in 2s");
         std::thread::sleep(std::time::Duration::from_secs(2));
     }
-    let body = body.unwrap_or_else(|| {
-        panic!(
-            "rnp-src: failed to download {url} after 5 attempts: {}",
+    if body.is_none() {
+        eprintln!(
+            "rnp-src: download {url} failed after 5 attempts: {}",
             last_err.unwrap_or_else(|| "unknown error".to_string())
-        )
-    });
+        );
+    }
+    body
+}
 
+/// Extract a downloaded gzip tarball into `dest`.
+fn extract_tarball_from(body: &[u8], dest: &Path, url: &str) {
     // Verify gzip magic bytes before attempting to decompress.
     if body.len() < 2 || body[0] != 0x1f || body[1] != 0x8b {
         let snippet = String::from_utf8_lossy(&body[..body.len().min(200)]);
