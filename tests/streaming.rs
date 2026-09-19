@@ -186,6 +186,9 @@ fn inline_verify_via_reader_writes_plaintext_to_writer() {
 #[test]
 fn sign_to_writer_produces_same_bytes_as_memory() {
     let ctx = Context::new().expect("ctx");
+    // Inline signatures embed creation time; pin the clock so the two
+    // signings below are byte-identical even across a second boundary.
+    ctx.set_timestamp(1_700_000_000).expect("set_timestamp");
     let key = signing_key(&ctx, "stream-sign2 <s2@example.com>");
     let message = b"a message signed to a writer";
 
