@@ -220,7 +220,7 @@ pub fn build_with(config: BuildConfig) -> Installed {
             flavor.librnp_version(),
             flavor
         );
-        build_librnp(&src_dir, &rnp_prefix, &deps);
+        build_librnp(&src_dir, &rnp_prefix, &deps, &botan_prefix);
     }
 
     let librnp_version = flavor.librnp_version().to_string();
@@ -350,6 +350,45 @@ fn cross_toolchain_set() -> bool {
     env::var("RNP_CMAKE_TOOLCHAIN")
         .map(|v| !v.trim().is_empty())
         .is_ok_and(|v| v)
+}
+
+/// Stable fingerprint of the librnp cmake configuration. Cache-busting
+/// key for the rnp-build tree: any change to the args or the caller's
+/// cmake passthroughs must invalidate a previously configured tree.
+fn cmake_fingerprint(cmake_args: &[String], toolchain: &str, extra_args: &str) -> String {
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for arg in cmake_args {
+        arg.hash(&mut hasher);
+    }
+    toolchain.hash(&mut hasher);
+    extra_args.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+/// Guard the one invariant the ABI-mismatch crash taught us: librnp must
+/// be compiled against the headers of the Botan we link. Panics at build
+/// time instead of shipping a binary that corrupts C++ object layout.
+fn assert_botan_headers_from_staged_prefix(build_dir: &Path, botan_prefix: &Path) {
+    let Ok(cache) = fs::read_to_string(build_dir.join("CMakeCache.txt")) else {
+        return;
+    };
+    let Some(include_dir) = cache
+        .lines()
+        .find_map(|line| line.strip_prefix("BOTAN_INCLUDE_DIR:PATH="))
+    else {
+        return;
+    };
+    if !Path::new(include_dir).starts_with(botan_prefix) {
+        panic!(
+            "rnp-src: librnp resolved Botan headers from {include_dir}, outside the staged \
+             Botan prefix {}. Compiling librnp against foreign Botan headers while linking \
+             ours corrupts the C++ ABI (rnpgp/rnp-rs#100). Remove that build tree and any \
+             conflicting pkg-config entries, then rebuild.",
+            botan_prefix.display()
+        );
+    }
 }
 
 fn append_cross_passthrough(cmd: &mut Command) {
@@ -738,7 +777,7 @@ fn collect_files(dir: &Path, extensions: &[&str], out: &mut Vec<PathBuf>) {
     }
 }
 
-fn build_librnp(src_dir: &Path, prefix: &Path, deps: &Deps) {
+fn build_librnp(src_dir: &Path, prefix: &Path, deps: &Deps, botan_prefix: &Path) {
     // Which source tree: the release tarball (+ backports) or HEAD —
     // derived from the flavor, not re-derived from cfg!.
     let rnp_src = if Flavor::from_features().is_head() {
@@ -754,47 +793,56 @@ fn build_librnp(src_dir: &Path, prefix: &Path, deps: &Deps) {
     };
 
     let build_dir = src_dir.join("rnp-build");
-    let mut cmd = Command::new("cmake");
-    cmd.args([
-        "-S",
-        rnp_src.to_str().unwrap(),
-        "-B",
-        build_dir.to_str().unwrap(),
-    ]);
+
+    // The full cmake configuration as one ordered value: fingerprinted
+    // below to decide whether a cached rnp-build tree is still valid.
+    let mut cmake_args: Vec<String> = vec![
+        "-S".to_string(),
+        rnp_src.display().to_string(),
+        "-B".to_string(),
+        build_dir.display().to_string(),
+    ];
     // A user-supplied toolchain file owns compiler selection; our hardcoded
     // host defaults would override it and break cross builds.
     if !cross_toolchain_set() {
-        cmd.args([
-            format!("-DCMAKE_C_COMPILER={cc}"),
-            format!("-DCMAKE_CXX_COMPILER={cxx}"),
-        ]);
+        cmake_args.push(format!("-DCMAKE_C_COMPILER={cc}"));
+        cmake_args.push(format!("-DCMAKE_CXX_COMPILER={cxx}"));
     }
-    cmd.args(["-DCRYPTO_BACKEND=botan3"])
-        .args([
-            "-DBUILD_SHARED_LIBS=OFF",
-            "-DBUILD_TESTING=OFF",
-            "-DENABLE_DOC=OFF",
-        ])
-        .args(["-DCMAKE_BUILD_TYPE=Release"])
-        .arg("-DCMAKE_CXX_FLAGS=-include cstring")
-        .arg(format!("-DCMAKE_PREFIX_PATH={}", deps.cmake_prefix_path()))
-        .arg(format!("-DCMAKE_INSTALL_PREFIX={}", prefix.display()))
-        .arg("-DCMAKE_POLICY_VERSION_MINIMUM=3.5");
-    append_cross_passthrough(&mut cmd);
+    cmake_args.extend([
+        "-DCRYPTO_BACKEND=botan3".to_string(),
+        "-DBUILD_SHARED_LIBS=OFF".to_string(),
+        "-DBUILD_TESTING=OFF".to_string(),
+        "-DENABLE_DOC=OFF".to_string(),
+        "-DCMAKE_BUILD_TYPE=Release".to_string(),
+        "-DCMAKE_CXX_FLAGS=-include cstring".to_string(),
+        format!("-DCMAKE_PREFIX_PATH={}", deps.cmake_prefix_path()),
+        format!("-DCMAKE_INSTALL_PREFIX={}", prefix.display()),
+        "-DCMAKE_POLICY_VERSION_MINIMUM=3.5".to_string(),
+        // Botan discovery authority: our staged Botan is what the final
+        // link uses, so its headers must be what librnp is compiled
+        // against. FindBotan ranks BOTAN_ROOT_DIR above pkg-config hints;
+        // without it, a host pkg-config entry (e.g. Homebrew's botan-3.pc)
+        // hijacks discovery via NO_DEFAULT_PATH and librnp gets compiled
+        // against foreign headers while we link our Botan — a silent C++
+        // ABI mismatch that crashes with garbage virtual dispatch
+        // (rnpgp/rnp-rs#100).
+        format!("-DBOTAN_ROOT_DIR={}", botan_prefix.display()),
+        "-DBOTAN_USE_PKGCONFIG=OFF".to_string(),
+    ]);
 
     // Optional upstream features: surface as Cargo features on rnp-src so
     // rnp-rs can flip them without changing the build pipeline.
     if cfg!(feature = "pqc") {
         eprintln!("rnp-src: building librnp with ENABLE_PQC=ON");
-        cmd.arg("-DENABLE_PQC=ON");
+        cmake_args.push("-DENABLE_PQC=ON".to_string());
     }
     if cfg!(feature = "crypto-refresh") {
         eprintln!("rnp-src: building librnp with ENABLE_CRYPTO_REFRESH=ON");
-        cmd.arg("-DENABLE_CRYPTO_REFRESH=ON");
+        cmake_args.push("-DENABLE_CRYPTO_REFRESH=ON".to_string());
     }
 
     if cfg!(target_os = "macos") {
-        cmd.arg("-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0");
+        cmake_args.push("-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0".to_string());
     }
 
     // Windows + MSYS2: Botan's static lib references Winsock (ws2_32) and
@@ -804,10 +852,32 @@ fn build_librnp(src_dir: &Path, prefix: &Path, deps: &Deps) {
     // is ALWAYS appended to every C++ link command by cmake regardless of
     // generator or find_package mode — the bulletproof way to inject these.
     if cfg!(target_os = "windows") {
-        cmd.arg("-DCMAKE_CXX_STANDARD_LIBRARIES=-lws2_32 -lcrypt32");
+        cmake_args.push("-DCMAKE_CXX_STANDARD_LIBRARIES=-lws2_32 -lcrypt32".to_string());
     }
 
+    // A reused CMakeCache keeps find_path results (BOTAN_INCLUDE_DIR is
+    // sticky), so any configuration change must discard the tree. The
+    // caller's cmake passthroughs alter cmake's view too — they belong in
+    // the key even though BuildConfig deliberately does not own them.
+    let stamp = src_dir.join("rnp-build.cmake-stamp");
+    let fingerprint = cmake_fingerprint(
+        &cmake_args,
+        &env::var("RNP_CMAKE_TOOLCHAIN").unwrap_or_default(),
+        &env::var("RNP_CMAKE_ARGS").unwrap_or_default(),
+    );
+    if fs::read_to_string(&stamp).ok().as_deref() != Some(&fingerprint) {
+        eprintln!("rnp-src: cmake configuration changed; discarding cached librnp build tree");
+        let _ = fs::remove_dir_all(&build_dir);
+        fs::write(&stamp, &fingerprint).ok();
+    }
+
+    let mut cmd = Command::new("cmake");
+    cmd.args(&cmake_args);
+    append_cross_passthrough(&mut cmd);
+
     run(&mut cmd, "librnp cmake");
+
+    assert_botan_headers_from_staged_prefix(&build_dir, botan_prefix);
     // Build only the library target. The rnp/rnpkeys CLI executables are of
     // no use to a static-library consumer, and on some cross builds rnp's
     // CMakeLists excludes the CLI from the build while its install rule
@@ -1011,6 +1081,32 @@ mod flavor_tests {
             !f.needs_json_c(),
             "librnp main vendors nlohmann/json; no json-c"
         );
+    }
+
+    #[test]
+    fn cmake_fingerprint_is_stable_for_identical_configuration() {
+        let args = vec![
+            "-S".to_string(),
+            "/src/rnp".to_string(),
+            "-DBOTAN_ROOT_DIR=/prefix/botan".to_string(),
+        ];
+        let first = cmake_fingerprint(&args, "", "");
+        let second = cmake_fingerprint(&args, "", "");
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn cmake_fingerprint_changes_with_any_configuration_input() {
+        let args = vec!["-DBOTAN_ROOT_DIR=/a".to_string()];
+        let base = cmake_fingerprint(&args, "", "");
+        // A changed cmake arg (e.g. a new BOTAN_ROOT_DIR) must invalidate.
+        assert_ne!(
+            base,
+            cmake_fingerprint(&["-DBOTAN_ROOT_DIR=/b".to_string()], "", "")
+        );
+        // So must the caller's toolchain / passthrough overrides.
+        assert_ne!(base, cmake_fingerprint(&args, "/tc.cmake", ""));
+        assert_ne!(base, cmake_fingerprint(&args, "", "-DENABLE_FOO=ON"));
     }
 
     #[test]
