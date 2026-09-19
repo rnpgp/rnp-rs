@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- /FI cstring on MSVC — cl treats -include's operand as a source file by @[object]
+- MSVC cross path for the cmake deps and bzip2 by @[object]
+
+### Fixed
+
 - Pin librnp's Botan discovery to the staged prefix by @[object]
 
 ### Other
