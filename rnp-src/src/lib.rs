@@ -440,11 +440,22 @@ fn cmake_dep_build(dep: &CmakeDep, src_root: &Path, prefix: &Path) {
             build_dir.to_str().unwrap(),
             "--parallel",
             &nproc(),
+            // Multi-config generators (the Visual Studio default on a
+            // windows host) build Debug without this while the generated
+            // install script looks in Release/. A no-op on single-config
+            // generators.
+            "--config",
+            "Release",
         ]),
         &format!("{} build", dep.name),
     );
     run(
-        Command::new("cmake").args(["--install", build_dir.to_str().unwrap()]),
+        Command::new("cmake").args([
+            "--install",
+            build_dir.to_str().unwrap(),
+            "--config",
+            "Release",
+        ]),
         &format!("{} install", dep.name),
     );
 
@@ -511,6 +522,14 @@ fn build_bzip2(src_dir: &Path, prefix: &Path) {
         download_and_extract(&bzip2_tarball_candidates(), src_dir);
     }
 
+    // MSVC targets: make/gcc/ar do not exist on a windows-msvc host, and
+    // GNU-toolchain objects would carry the wrong CRT for the final link
+    // anyway. Compile with cl and archive with lib instead.
+    if env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
+        build_bzip2_msvc(&bzip2_src, prefix);
+        return;
+    }
+
     // Honor CC from the environment (cross builds point it at the target
     // compiler) before falling back to platform defaults.
     let cc = env::var("CC").unwrap_or_else(|_| {
@@ -562,6 +581,85 @@ fn build_bzip2(src_dir: &Path, prefix: &Path) {
         prefix.join("lib").join("libbz2.a"),
     )
     .unwrap();
+    fs::copy(
+        bzip2_src.join("bzlib.h"),
+        prefix.join("include").join("bzlib.h"),
+    )
+    .unwrap();
+}
+
+/// bzip2 on MSVC: the Makefile path needs make/gcc/ar, none of which
+/// exist on a windows-msvc host. bzip2 is seven C files — compile them
+/// and the bz_internal_error shim with cl, archive with lib.
+fn build_bzip2_msvc(bzip2_src: &Path, prefix: &Path) {
+    const SRCS: &[&str] = &[
+        "blocksort.c",
+        "huffman.c",
+        "crctable.c",
+        "randtable.c",
+        "compress.c",
+        "decompress.c",
+        "bzlib.c",
+    ];
+
+    // Match the final link's CRT: cargo's crt-static target feature is
+    // the same signal every /MT consumer keys on; its absence means /MD.
+    let crt = if env::var("CARGO_CFG_TARGET_FEATURE")
+        .map(|features| features.split(',').any(|f| f == "crt-static"))
+        .unwrap_or(false)
+    {
+        "/MT"
+    } else {
+        "/MD"
+    };
+
+    let shim_src = bzip2_src.join("bz_internal_error_shim.c");
+    fs::write(
+        &shim_src,
+        "#include <stdlib.h>\nvoid bz_internal_error(int errcode) { (void)errcode; abort(); }\n",
+    )
+    .unwrap();
+
+    let mut objs: Vec<PathBuf> = Vec::new();
+    for src in SRCS {
+        let obj = bzip2_src.join(src.replace(".c", ".obj"));
+        run(
+            Command::new("cl")
+                .args(["/nologo", "/c", "/O2", crt])
+                .arg(bzip2_src.join(src))
+                .arg(format!("/Fo{}", obj.display()))
+                .current_dir(bzip2_src),
+            "bzip2 cl",
+        );
+        objs.push(obj);
+    }
+    let shim_obj = bzip2_src.join("bz_internal_error_shim.obj");
+    run(
+        Command::new("cl")
+            .args(["/nologo", "/c", "/O2", crt])
+            .arg(&shim_src)
+            .arg(format!("/Fo{}", shim_obj.display()))
+            .current_dir(bzip2_src),
+        "bzip2 bz_internal_error shim compile",
+    );
+    objs.push(shim_obj);
+
+    let lib = bzip2_src.join("libbz2.lib");
+    run(
+        Command::new("lib")
+            .arg("/nologo")
+            .arg(format!("/OUT:{}", lib.display()))
+            .args(&objs)
+            .current_dir(bzip2_src),
+        "bzip2 lib",
+    );
+
+    fs::create_dir_all(prefix.join("lib")).ok();
+    fs::create_dir_all(prefix.join("include")).ok();
+    fs::copy(&lib, prefix.join("lib").join("libbz2.lib")).unwrap();
+    // FindBZip2's NAMES cover both spellings; stage both rather than
+    // guess which cmake module version does the looking.
+    fs::copy(&lib, prefix.join("lib").join("bz2.lib")).unwrap();
     fs::copy(
         bzip2_src.join("bzlib.h"),
         prefix.join("include").join("bzlib.h"),
@@ -891,6 +989,10 @@ fn build_librnp(src_dir: &Path, prefix: &Path, deps: &Deps, botan_prefix: &Path)
             "librnp",
             "--parallel",
             &nproc(),
+            // Same multi-config contract as the dep builds (Visual Studio
+            // would otherwise build Debug); a no-op on single-config.
+            "--config",
+            "Release",
         ]),
         "librnp build",
     );
@@ -904,6 +1006,8 @@ fn build_librnp(src_dir: &Path, prefix: &Path, deps: &Deps, botan_prefix: &Path)
             build_dir.to_str().unwrap(),
             "--component",
             "development",
+            "--config",
+            "Release",
         ]),
         "librnp install",
     );
