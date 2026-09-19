@@ -35,6 +35,9 @@ SHAKE = "SHAKE"
 # MSVC cl flags ("/Fo" names the object-file output) — seen as the
 # standalone token Fo by the spell checker.
 Fo = "Fo"
+# POSIX/BSD whiteout file type macros (S_IFWHT / DT_WHT) in the vendored
+# MSVC compat dirent.h.
+WHT = "WHT"
 
 # Rust / FFI terms
 ffi = "ffi"
