@@ -32,6 +32,10 @@ Botan = "Botan"
 SHA = "SHA"
 SHAKE = "SHAKE"
 
+# MSVC cl flags ("/Fo" names the object-file output) — seen as the
+# standalone token Fo by the spell checker.
+Fo = "Fo"
+
 # Rust / FFI terms
 ffi = "ffi"
 FFI = "FFI"
