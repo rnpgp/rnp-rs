@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Mirror fallback for dependency tarball downloads by @[object]
+- BuildConfig seam for BOTAN_CONFIGURE_* precedence by @[object]
+
+### Other
+
+- Respect a caller-provided BOTAN_CONFIGURE_CC on windows (the unconditional gcc stomp made MSVC cross targets unbuildable) by @[object]
+
+### Added
+
 - Sync vendored HEAD flavor to librnp main (pin, clone-sync, drop json-c) by @[object]
 
 ### Other
