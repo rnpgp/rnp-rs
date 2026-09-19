@@ -913,10 +913,26 @@ fn build_librnp(src_dir: &Path, prefix: &Path, deps: &Deps, botan_prefix: &Path)
         cmake_args.push(format!("-DCMAKE_C_COMPILER={cc}"));
         cmake_args.push(format!("-DCMAKE_CXX_COMPILER={cxx}"));
     }
-    let cxx_force_include = if target_is_msvc() {
-        "-DCMAKE_CXX_FLAGS=/FI cstring"
+    // MSVC has no POSIX <dirent.h>/<getopt.h>; librnp's own sources
+    // include both (uniwin.h -> getoptwin.h, file-utils.h,
+    // librekey/rnp_key_store.cpp). Upstream's MSVC CI gets them from
+    // vcpkg's MSBuild integration, which injects the port include dir
+    // into EVERY target — find_path results alone only reach rnp-common
+    // and the CLI targets, not librnp-obj. Our vendored compat headers
+    // (compat/msvc/, MIT tronkko dirent + a declaration-only getopt shim)
+    // replicate that global injection via /I on the flag vars.
+    let msvc_compat = if target_is_msvc() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("compat")
+            .join("msvc");
+        Some(dir.display().to_string().replace('\\', "/"))
     } else {
-        "-DCMAKE_CXX_FLAGS=-include cstring"
+        None
+    };
+    let cxx_force_include = if let Some(compat) = &msvc_compat {
+        format!("-DCMAKE_CXX_FLAGS=/FI cstring /I{compat}")
+    } else {
+        "-DCMAKE_CXX_FLAGS=-include cstring".to_string()
     };
     cmake_args.extend([
         "-DCRYPTO_BACKEND=botan3".to_string(),
@@ -944,6 +960,29 @@ fn build_librnp(src_dir: &Path, prefix: &Path, deps: &Deps, botan_prefix: &Path)
         format!("-DBOTAN_ROOT_DIR={}", botan_prefix.display()),
         "-DBOTAN_USE_PKGCONFIG=OFF".to_string(),
     ]);
+
+    if let Some(compat) = &msvc_compat {
+        // The CLI/example CMakeLists run find_path(GETOPT_INCLUDE_DIR /
+        // DIRENT_INCLUDE_DIR) and find_library(GETOPT_LIBRARY) under
+        // if(MSVC) and reference the results unconditionally; left
+        // NOTFOUND they fail the whole cmake GENERATE step even though we
+        // only ever build the librnp target. Presetting the vars skips
+        // the searches. GETOPT_LIBRARY is only referenced by the CLI link
+        // rules, which never execute — a placeholder path is enough; if
+        // anyone ever does link a CLI against it, the empty archive fails
+        // loudly instead of silently dropping getopt symbols.
+        let placeholder = src_dir.join("rnp-msvc-getopt-placeholder.lib");
+        fs::write(&placeholder, b"").ok();
+        cmake_args.extend([
+            format!("-DCMAKE_C_FLAGS=/I{compat}"),
+            format!("-DDIRENT_INCLUDE_DIR={compat}"),
+            format!("-DGETOPT_INCLUDE_DIR={compat}"),
+            format!(
+                "-DGETOPT_LIBRARY={}",
+                placeholder.display().to_string().replace('\\', "/")
+            ),
+        ]);
+    }
 
     // Optional upstream features: surface as Cargo features on rnp-src so
     // rnp-rs can flip them without changing the build pipeline.
