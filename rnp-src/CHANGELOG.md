@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Stage MSVC compat dirent/getopt headers for librnp by @[object]
+
+### Fixed
+
 - /FI cstring on MSVC — cl treats -include's operand as a source file by @[object]
 - MSVC cross path for the cmake deps and bzip2 by @[object]
 
