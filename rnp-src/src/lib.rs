@@ -139,11 +139,14 @@ pub fn build() -> Installed {
 
     // Windows + MSYS2 UCRT64: botan-src's configure.py auto-detects MSVC
     // by default and fails ("could not find 'cl'"). Force gcc (mingw)
-    // so it picks the MSYS2 toolchain. Also disable the Windows cert
-    // store module — it references crypt32.lib (CertFreeCertificateContext
+    // so it picks the MSYS2 toolchain — unless the CALLER already named a
+    // compiler (an MSVC cross build exports BOTAN_CONFIGURE_CC=cl, which
+    // the unconditional set_var here used to stomp, making every non-gcc
+    // Windows target unbuildable). Also disable the Windows cert store
+    // module — it references crypt32.lib (CertFreeCertificateContext
     // etc.) which our static link doesn't pull in, causing linker errors
     // during the librnp build step.
-    if cfg!(target_os = "windows") {
+    if cfg!(target_os = "windows") && env::var_os("BOTAN_CONFIGURE_CC").is_none() {
         unsafe {
             env::set_var("BOTAN_CONFIGURE_CC", "gcc");
             env::set_var("BOTAN_CONFIGURE_CC_BIN", "g++");
