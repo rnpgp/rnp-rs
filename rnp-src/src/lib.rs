@@ -352,6 +352,13 @@ fn cross_toolchain_set() -> bool {
         .is_ok_and(|v| v)
 }
 
+/// True when the cargo TARGET abi is MSVC: no POSIX toolchain
+/// (make/gcc/ar) exists on that host, and compiler flag spellings
+/// differ from gcc/clang.
+fn target_is_msvc() -> bool {
+    env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc")
+}
+
 /// Stable fingerprint of the librnp cmake configuration. Cache-busting
 /// key for the rnp-build tree: any change to the args or the caller's
 /// cmake passthroughs must invalidate a previously configured tree.
@@ -525,7 +532,7 @@ fn build_bzip2(src_dir: &Path, prefix: &Path) {
     // MSVC targets: make/gcc/ar do not exist on a windows-msvc host, and
     // GNU-toolchain objects would carry the wrong CRT for the final link
     // anyway. Compile with cl and archive with lib instead.
-    if env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
+    if target_is_msvc() {
         build_bzip2_msvc(&bzip2_src, prefix);
         return;
     }
@@ -906,13 +913,23 @@ fn build_librnp(src_dir: &Path, prefix: &Path, deps: &Deps, botan_prefix: &Path)
         cmake_args.push(format!("-DCMAKE_C_COMPILER={cc}"));
         cmake_args.push(format!("-DCMAKE_CXX_COMPILER={cxx}"));
     }
+    let cxx_force_include = if target_is_msvc() {
+        "-DCMAKE_CXX_FLAGS=/FI cstring"
+    } else {
+        "-DCMAKE_CXX_FLAGS=-include cstring"
+    };
     cmake_args.extend([
         "-DCRYPTO_BACKEND=botan3".to_string(),
         "-DBUILD_SHARED_LIBS=OFF".to_string(),
         "-DBUILD_TESTING=OFF".to_string(),
         "-DENABLE_DOC=OFF".to_string(),
         "-DCMAKE_BUILD_TYPE=Release".to_string(),
-        "-DCMAKE_CXX_FLAGS=-include cstring".to_string(),
+        // librnp has translation units missing #include <cstring>;
+        // force-include it. The spelling is toolchain-specific:
+        // -include for gcc/clang, /FI for MSVC — cl ignores "-include"
+        // (D9002) and then treats "cstring" as a SOURCE file (C1083),
+        // which breaks cmake's compiler smoke test on the VS generator.
+        cxx_force_include.to_string(),
         format!("-DCMAKE_PREFIX_PATH={}", deps.cmake_prefix_path()),
         format!("-DCMAKE_INSTALL_PREFIX={}", prefix.display()),
         "-DCMAKE_POLICY_VERSION_MINIMUM=3.5".to_string(),
