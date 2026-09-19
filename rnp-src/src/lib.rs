@@ -18,6 +18,7 @@
 //! Pure-logic types and constants live in [`links`] so they are
 //! unit-testable here without invoking the C/C++ toolchain.
 
+pub mod config;
 pub mod links;
 
 pub use std::env;
@@ -25,6 +26,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use config::BuildConfig;
 use links::{CmakeDep, Deps, JSON_C, ZLIB};
 
 /// librnp version this crate compiles by default (release tarball).
@@ -122,7 +124,17 @@ impl Flavor {
     }
 }
 
+/// Build librnp (+ deps) with the detected configuration (platform
+/// defaults, cargo features, and the caller's `BOTAN_CONFIGURE_*` env).
 pub fn build() -> Installed {
+    build_with(BuildConfig::detect())
+}
+
+/// Build librnp (+ deps) with an explicit [`BuildConfig`] — for
+/// programmatic callers that want to name the Botan compiler and module
+/// sets in code instead of relying on environment ordering. Resolution
+/// semantics and precedence are documented on [`BuildConfig`].
+pub fn build_with(config: BuildConfig) -> Installed {
     let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"));
     let src_dir = out_dir.join("src");
     let prefix = out_dir.join("install");
@@ -137,37 +149,15 @@ pub fn build() -> Installed {
         }
     }
 
-    // Windows + MSYS2 UCRT64: botan-src's configure.py auto-detects MSVC
-    // by default and fails ("could not find 'cl'"). Force gcc (mingw)
-    // so it picks the MSYS2 toolchain — unless the CALLER already named a
-    // compiler (an MSVC cross build exports BOTAN_CONFIGURE_CC=cl, which
-    // the unconditional set_var here used to stomp, making every non-gcc
-    // Windows target unbuildable). Also disable the Windows cert store
-    // module — it references crypt32.lib (CertFreeCertificateContext
-    // etc.) which our static link doesn't pull in, causing linker errors
-    // during the librnp build step.
-    if cfg!(target_os = "windows") && env::var_os("BOTAN_CONFIGURE_CC").is_none() {
-        unsafe {
-            env::set_var("BOTAN_CONFIGURE_CC", "gcc");
-            env::set_var("BOTAN_CONFIGURE_CC_BIN", "g++");
-            env::set_var("BOTAN_CONFIGURE_DISABLE_MODULES", "certstor_system_windows");
-        }
-    }
-
-    // PQC / crypto-refresh: botan-src reads BOTAN_CONFIGURE_* env vars
-    // and forwards them as configure.py flags. Setting ENABLE_MODULES
-    // here makes the post-quantum algorithms available; rnp's cmake
-    // build then enables ENABLE_PQC=ON / ENABLE_CRYPTO_REFRESH=ON
-    // (configured in build_librnp via cfg!).
-    if cfg!(feature = "pqc") {
-        eprintln!("rnp-src: enabling PQC modules in Botan build");
-        unsafe {
-            env::set_var(
-                "BOTAN_CONFIGURE_ENABLE_MODULES",
-                "ml_kem,ml_dsa,slh_dsa_sha2,slh_dsa_shake",
-            );
-        }
-    }
+    // Botan build configuration: one BuildConfig value, resolved with a
+    // single precedence (defaults < env < feature-merge-as-union) and
+    // applied at one write point. This replaces the scattered env
+    // set_vars whose "default applied last" behavior stomped caller
+    // intent (MSVC cross CC on Windows: #103; caller module lists under
+    // the pqc feature). Policy and its table tests live in `config`.
+    // Applied here — after the cache check — so cached builds never
+    // mutate the process environment.
+    config.apply();
 
     // --- 1. Botan (via botan-src crate) ---
     eprintln!("rnp-src: building Botan via botan-src crate...");
