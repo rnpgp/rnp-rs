@@ -479,9 +479,15 @@ fn emit_link_directives(loc: &LibrnpLocation) {
             println!("cargo:rustc-link-lib=static=bz2");
 
             // C++ standard library — librnp, sexpp, and Botan are all C++.
-            // macOS uses libc++; everything else (Linux, MinGW) uses libstdc++.
+            // macOS uses libc++; Linux/MinGW link libstdc++ explicitly.
+            // MSVC needs nothing here: cl-compiled objects carry embedded
+            // /DEFAULTLIB directives for the CRT/C++ runtime (libcmt +
+            // libcpmt, or msvcrt + msvcprt), and there is no stdc++.lib to
+            // point at — emitting the line would fail the final link.
             if cfg!(target_os = "macos") {
                 println!("cargo:rustc-link-lib=dylib=c++");
+            } else if cfg!(all(target_os = "windows", target_env = "msvc")) {
+                // covered by /DEFAULTLIB in the objects themselves
             } else {
                 println!("cargo:rustc-link-lib=dylib=stdc++");
             }
