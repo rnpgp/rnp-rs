@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- No C++ stdlib line on MSVC targets — via CARGO_CFG, not cfg! by @[object]
+
 ### Added
 
 - Sync vendored HEAD flavor to librnp main (pin, clone-sync, drop json-c) by @[object]
