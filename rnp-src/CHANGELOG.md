@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Alias MSVC zlibstatic.lib to z.lib; platform-aware rebuild guards by @[object]
+
+### Fixed
+
 - Stage MSVC compat dirent/getopt headers for librnp by @[object]
 
 ### Fixed
