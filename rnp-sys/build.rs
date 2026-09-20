@@ -448,6 +448,16 @@ fn generate_bindings(include_dir: &std::path::Path) -> bindgen::Bindings {
 // Link directives.
 // -----------------------------------------------------------------------
 
+/// Target predicates for build scripts: cfg! sees the HOST; these see the
+/// crate's actual TARGET via CARGO_CFG_*.
+fn cfg_target_os(name: &str) -> bool {
+    env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok(name)
+}
+
+fn cfg_target_env(name: &str) -> bool {
+    env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok(name)
+}
+
 fn emit_link_directives(loc: &LibrnpLocation) {
     match loc.link_mode {
         LinkMode::System | LinkMode::Explicit => {
@@ -479,9 +489,20 @@ fn emit_link_directives(loc: &LibrnpLocation) {
             println!("cargo:rustc-link-lib=static=bz2");
 
             // C++ standard library — librnp, sexpp, and Botan are all C++.
-            // macOS uses libc++; everything else (Linux, MinGW) uses libstdc++.
-            if cfg!(target_os = "macos") {
+            // macOS uses libc++; Linux/MinGW link libstdc++ explicitly.
+            // MSVC needs nothing here: cl-compiled objects carry embedded
+            // /DEFAULTLIB directives for the CRT/C++ runtime (libcmt +
+            // libcpmt, or msvcrt + msvcprt), and there is no stdc++.lib to
+            // point at — emitting the line would fail the final link.
+            // NOTE: build scripts must consult CARGO_CFG_TARGET_* — cfg!
+            // evaluates against the HOST. The MSYS2 CI job runs cargo on a
+            // windows-msvc host while targeting windows-gnu; a cfg!-based
+            // msvc guard matched the host there and silently dropped
+            // -lstdc++ for a gnu target (undefined std:: refs at link).
+            if cfg_target_os("macos") {
                 println!("cargo:rustc-link-lib=dylib=c++");
+            } else if cfg_target_os("windows") && cfg_target_env("msvc") {
+                // covered by /DEFAULTLIB in the objects themselves
             } else {
                 println!("cargo:rustc-link-lib=dylib=stdc++");
             }
@@ -492,7 +513,7 @@ fn emit_link_directives(loc: &LibrnpLocation) {
             //     CryptGenRandom, CryptReleaseContext) — only when json-c
             //     is linked (0.18.1 flavor)
             //   - ws2_32 / crypt32: Botan's Winsock + CryptoAPI usage
-            if cfg!(target_os = "windows") {
+            if cfg_target_os("windows") {
                 if loc.link_json_c {
                     println!("cargo:rustc-link-lib=dylib=advapi32");
                 }
