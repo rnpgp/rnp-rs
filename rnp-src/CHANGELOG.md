@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Honor crt-static on MSVC — compile every staged C/C++ dep /MT by @[object]
+
+### Fixed
+
 - Alias MSVC zlibstatic.lib to z.lib; platform-aware rebuild guards by @[object]
 
 ### Fixed
