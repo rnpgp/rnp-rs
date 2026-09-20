@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Honor CC/CXX for the librnp cmake build (rnp-rs#120) by @[object]
+
+### Fixed
+
 - Honor crt-static on MSVC — compile every staged C/C++ dep /MT by @[object]
 
 ### Fixed
