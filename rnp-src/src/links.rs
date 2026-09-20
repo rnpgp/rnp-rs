@@ -131,7 +131,15 @@ pub const ZLIB: CmakeDep = CmakeDep {
     // `static=z` which searches for libz.a — alias both possible MinGW
     // outputs to the canonical Unix name. On Unix this is a no-op: the
     // sources don't exist there (libz.a is produced directly).
-    installed_lib_aliases: &[("libzlib.a", "libz.a"), ("libzlibstatic.a", "libz.a")],
+    // On MSVC the static archive installs as zlibstatic.lib (zlib.lib, when
+    // present, is the DLL import library — linking it statically would
+    // silently create a runtime dependency on a zlib1.dll nobody ships).
+    // rustc resolves `static=z` to z.lib.
+    installed_lib_aliases: &[
+        ("libzlib.a", "libz.a"),
+        ("libzlibstatic.a", "libz.a"),
+        ("zlibstatic.lib", "z.lib"),
+    ],
 };
 
 #[cfg(test)]
@@ -185,6 +193,16 @@ mod tests {
         let root = Path::new("/tmp/src");
         assert_eq!(dep.source_dir(root), PathBuf::from("/tmp/src/json-c-0.17"));
         assert_eq!(dep.build_dir(root), PathBuf::from("/tmp/src/json-c-build"));
+    }
+
+    #[test]
+    fn zlib_aliases_cover_mingw_and_msvc_static_names() {
+        // rnp-rs links `static=z` on every platform: rustc resolves that to
+        // libz.a on Unix/MinGW and z.lib on MSVC, so the alias table must
+        // produce both from whatever zlib's cmake installs per toolchain.
+        let aliases = ZLIB.installed_lib_aliases;
+        assert!(aliases.contains(&("libzlibstatic.a", "libz.a")));
+        assert!(aliases.contains(&("zlibstatic.lib", "z.lib")));
     }
 
     #[test]
