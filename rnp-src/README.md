@@ -65,6 +65,22 @@ No `curl`, `tar`, or `bsdtar` needed — source downloads are pure Rust
 
 First build takes ~5-10 min (Botan dominates); cached in `OUT_DIR` after that.
 
+### Steering the compilers
+
+rnp-src picks the compilers for the librnp (and json-c/zlib/bzip2) builds
+with one precedence:
+
+1. **`CC` / `CXX` environment variables** — set both when the two differ
+   in name. This is how you build on compiler-toolchain-pure environments
+   such as MSYS2 **clangarm64** (aarch64 Windows, LLVM only — no gcc
+   exists there): `export CC=clang CXX=clang++`.
+2. **Platform defaults**: `/usr/bin/clang`/`/usr/bin/clang++` on a macOS
+   target, `gcc`/`g++` everywhere else.
+
+A full CMake toolchain file overrides both: set
+`RNP_CMAKE_TOOLCHAIN=/path/to/toolchain.cmake`. Individual extra flags
+can be passed with `RNP_CMAKE_ARGS` (split on whitespace).
+
 ### Windows setup (MSYS2 UCRT64)
 
 ```sh

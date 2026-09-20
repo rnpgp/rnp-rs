@@ -22,6 +22,7 @@ pub mod config;
 pub mod links;
 
 pub use std::env;
+use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -416,6 +417,37 @@ fn staged_static_marker(unix_archive: &str) -> String {
     let stem = unix_archive.strip_prefix("lib").unwrap_or(unix_archive);
     let stem = stem.strip_suffix(".a").unwrap_or(stem);
     format!("{stem}.lib")
+}
+
+/// Compiler pair for the librnp cmake build. One precedence, matching
+/// `build_bzip2`'s existing CC contract: caller's `CC`/`CXX` env first
+/// (the standard way to point a cross build at the target compiler —
+/// clang-only environments like MSYS2 clangarm64 have no gcc to fall
+/// back to, see #120), then platform defaults.
+fn librnp_compilers() -> (String, String) {
+    librnp_compilers_with(|key| std::env::var_os(key))
+}
+
+/// Pure resolution core of [`librnp_compilers`] with the environment
+/// injected, so the precedence is table-testable.
+fn librnp_compilers_with(get_env: impl Fn(&str) -> Option<OsString>) -> (String, String) {
+    fn pick(get_env: &impl Fn(&str) -> Option<OsString>, key: &str, default: &str) -> String {
+        get_env(key)
+            .map(|v| v.to_string_lossy().into_owned())
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| default.to_string())
+    }
+    let macos_target = get_env("CARGO_CFG_TARGET_OS").as_deref() == Some(OsStr::new("macos"));
+    let (default_cc, default_cxx) = if macos_target {
+        ("/usr/bin/clang", "/usr/bin/clang++")
+    } else {
+        ("gcc", "g++")
+    };
+    (
+        pick(&get_env, "CC", default_cc),
+        pick(&get_env, "CXX", default_cxx),
+    )
 }
 
 /// Stable fingerprint of the librnp cmake configuration. Cache-busting
@@ -959,11 +991,7 @@ fn build_librnp(src_dir: &Path, prefix: &Path, deps: &Deps, botan_prefix: &Path)
         prepare_librnp_release(src_dir)
     };
 
-    let (cc, cxx) = if cfg!(target_os = "macos") {
-        ("/usr/bin/clang", "/usr/bin/clang++")
-    } else {
-        ("gcc", "g++")
-    };
+    let (cc, cxx) = librnp_compilers();
 
     let build_dir = src_dir.join("rnp-build");
 
@@ -1298,6 +1326,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
 #[cfg(test)]
 mod flavor_tests {
     use super::*;
+    use std::collections::HashMap;
 
     #[test]
     fn release_flavor_names_its_cache_and_version() {
@@ -1319,6 +1348,37 @@ mod flavor_tests {
         assert!(
             !f.needs_json_c(),
             "librnp main vendors nlohmann/json; no json-c"
+        );
+    }
+
+    fn os_env<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<OsString> + use<'a> {
+        let map: HashMap<String, OsString> = pairs
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), OsString::from(*v)))
+            .collect();
+        move |key: &str| map.get(key).cloned()
+    }
+
+    #[test]
+    fn cc_cxx_env_steers_the_librnp_compilers() {
+        // The #120 case: MSYS2 clangarm64 has no gcc — the caller's
+        // CC/CXX must win over the gcc/g++ platform default.
+        let (cc, cxx) = librnp_compilers_with(os_env(&[("CC", "clang"), ("CXX", "clang++")]));
+        assert_eq!((cc.as_str(), cxx.as_str()), ("clang", "clang++"));
+    }
+
+    #[test]
+    fn empty_cc_cxx_falls_back_to_platform_default() {
+        let (cc, cxx) = librnp_compilers_with(os_env(&[("CC", "  ")]));
+        assert_eq!((cc.as_str(), cxx.as_str()), ("gcc", "g++"));
+    }
+
+    #[test]
+    fn macos_target_defaults_to_apple_clang() {
+        let (cc, cxx) = librnp_compilers_with(os_env(&[("CARGO_CFG_TARGET_OS", "macos")]));
+        assert_eq!(
+            (cc.as_str(), cxx.as_str()),
+            ("/usr/bin/clang", "/usr/bin/clang++")
         );
     }
 
