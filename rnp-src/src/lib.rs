@@ -286,6 +286,17 @@ fn build_botan(prefix: &Path) -> PathBuf {
     fs::create_dir_all(botan_prefix.join("lib")).ok();
     fs::create_dir_all(botan_prefix.join("include")).ok();
 
+    // botan-src's configure.py defaults to the DLL CRT (/MD) on MSVC.
+    // When the final Rust link is crt-static, forward /MT through
+    // botan-src's env passthrough (--msvc-runtime) so botan's objects
+    // match the link. In-process env: botan_src::build() reads it in
+    // this same build-script process.
+    if target_is_msvc() && crt_static() {
+        // SAFETY: a cargo build script is single-threaded at this point —
+        // nothing else can be reading the environment concurrently.
+        unsafe { env::set_var("BOTAN_CONFIGURE_MSVC_RUNTIME", "MT") };
+    }
+
     let (botan_build_dir, _botan_include_dir) = botan_src::build();
 
     // Botan's static lib filename differs by platform: Unix uses the
@@ -376,6 +387,23 @@ fn target_is_msvc() -> bool {
     env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc")
 }
 
+/// True when the final Rust link requests a static CRT
+/// (`-C target-feature=+crt-static`): every C/C++ object we stage must
+/// then be compiled /MT — the static CRT (libucrt.lib) carries no
+/// `__imp_*` DLL-import thunks, so any /MD object in the link fails
+/// with LNK2019 on `__imp_strdup` and friends. Absence of the feature
+/// means /MD, the toolchain default, and nothing changes.
+fn crt_static() -> bool {
+    env::var("CARGO_CFG_TARGET_FEATURE")
+        .map(|features| crt_static_in_features(&features))
+        .unwrap_or(false)
+}
+
+/// The parse half of crt_static(), split out for unit tests.
+fn crt_static_in_features(features: &str) -> bool {
+    features.split(',').any(|f| f == "crt-static")
+}
+
 /// Map a canonical Unix static-archive name to what the staged install
 /// actually contains for the current target: MSVC drops the `lib` prefix
 /// and the `.a` suffix (`librnp.a` → `rnp.lib`; `libz.a` → `z.lib` once
@@ -440,6 +468,21 @@ fn append_cross_passthrough(cmd: &mut Command) {
     }
 }
 
+/// MSVC CRT selection for every cmake-built dep (json-c, zlib, librnp):
+/// when the final Rust link is crt-static, force the static CRT.
+/// CMAKE_MSVC_RUNTIME_LIBRARY only takes effect under policy CMP0091=NEW,
+/// which projects with an old cmake_minimum_required pin to OLD — the
+/// POLICY_DEFAULT override keeps the knob live for them. No-op elsewhere:
+/// /MD stays the toolchain default, and mingw/OHOS never see the flags.
+fn append_msvc_crt_args(cmd: &mut Command) {
+    if target_is_msvc() && crt_static() {
+        cmd.args([
+            "-DCMAKE_POLICY_DEFAULT_CMP0091=NEW",
+            "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded",
+        ]);
+    }
+}
+
 // ---------------------------------------------------------------------
 // Generic cmake dep builder. json-c and zlib are config-driven via
 // `CmakeDep`; this is the single place that knows how to invoke cmake.
@@ -469,6 +512,7 @@ fn cmake_dep_build(dep: &CmakeDep, src_root: &Path, prefix: &Path) {
     if let Some(min) = dep.cmake_policy_minimum {
         configure.arg(format!("-DCMAKE_POLICY_VERSION_MINIMUM={min}"));
     }
+    append_msvc_crt_args(&mut configure);
     append_cross_passthrough(&mut configure);
     run(&mut configure, &format!("{} cmake", dep.name));
 
@@ -642,14 +686,7 @@ fn build_bzip2_msvc(bzip2_src: &Path, prefix: &Path) {
 
     // Match the final link's CRT: cargo's crt-static target feature is
     // the same signal every /MT consumer keys on; its absence means /MD.
-    let crt = if env::var("CARGO_CFG_TARGET_FEATURE")
-        .map(|features| features.split(',').any(|f| f == "crt-static"))
-        .unwrap_or(false)
-    {
-        "/MT"
-    } else {
-        "/MD"
-    };
+    let crt = if crt_static() { "/MT" } else { "/MD" };
 
     let shim_src = bzip2_src.join("bz_internal_error_shim.c");
     fs::write(
@@ -1015,6 +1052,17 @@ fn build_librnp(src_dir: &Path, prefix: &Path, deps: &Deps, botan_prefix: &Path)
         ]);
     }
 
+    // CRT pairing with the final Rust link (append_msvc_crt_args is the
+    // Command-form twin used by the cmake-dep builder): crt-static means
+    // every librnp object must be /MT or the exe link dies on missing
+    // __imp_* CRT thunks (tamatebako/tebako#637's arm64 leg).
+    if target_is_msvc() && crt_static() {
+        cmake_args.extend([
+            "-DCMAKE_POLICY_DEFAULT_CMP0091=NEW".to_string(),
+            "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded".to_string(),
+        ]);
+    }
+
     // Optional upstream features: surface as Cargo features on rnp-src so
     // rnp-rs can flip them without changing the build pipeline.
     if cfg!(feature = "pqc") {
@@ -1323,5 +1371,17 @@ mod flavor_tests {
         // prepare_librnp_head ambiguous and break the 8-char cache key.
         assert_eq!(RNP_HEAD_REF.len(), 40);
         assert!(RNP_HEAD_REF.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn crt_static_parsing_matches_only_the_exact_feature() {
+        assert!(crt_static_in_features("crt-static"));
+        assert!(crt_static_in_features("crt-static,panic=abort"));
+        assert!(crt_static_in_features("panic=abort,crt-static"));
+        assert!(!crt_static_in_features(""));
+        assert!(!crt_static_in_features("panic=abort"));
+        // Substring tricks must not trip it.
+        assert!(!crt_static_in_features("crt-static-x"));
+        assert!(!crt_static_in_features("xcrt-static"));
     }
 }
