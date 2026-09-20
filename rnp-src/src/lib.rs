@@ -186,27 +186,44 @@ pub fn build_with(config: BuildConfig) -> Installed {
     // json-c is only needed by the 0.18.1 release tarball; librnp main
     // vendors nlohmann/json (see Flavor::needs_json_c).
     let jsonc_prefix = prefix.join("json-c");
-    if flavor.needs_json_c() && !jsonc_prefix.join("lib").join("libjson-c.a").exists() {
+    if flavor.needs_json_c()
+        && !jsonc_prefix
+            .join("lib")
+            .join(staged_static_marker("libjson-c.a"))
+            .exists()
+    {
         eprintln!("rnp-src: building json-c {}...", JSON_C.version);
         cmake_dep_build(&JSON_C, &src_dir, &jsonc_prefix);
     }
 
     let zlib_prefix = prefix.join("zlib");
-    if !zlib_prefix.join("lib").join("libz.a").exists() {
+    if !zlib_prefix
+        .join("lib")
+        .join(staged_static_marker("libz.a"))
+        .exists()
+    {
         eprintln!("rnp-src: building zlib {}...", ZLIB.version);
         cmake_dep_build(&ZLIB, &src_dir, &zlib_prefix);
     }
 
     // --- 4. bzip2 (manual make + bz_internal_error shim) ---
     let bzip2_prefix = prefix.join("bzip2");
-    if !bzip2_prefix.join("lib").join("libbz2.a").exists() {
+    if !bzip2_prefix
+        .join("lib")
+        .join(staged_static_marker("libbz2.a"))
+        .exists()
+    {
         eprintln!("rnp-src: building bzip2 {BZIP2_VERSION}...");
         build_bzip2(&src_dir, &bzip2_prefix);
     }
 
     // --- 5. librnp ---
     let rnp_prefix = prefix.join(flavor.cache_dir());
-    if !rnp_prefix.join("lib").join("librnp.a").exists() {
+    if !rnp_prefix
+        .join("lib")
+        .join(staged_static_marker("librnp.a"))
+        .exists()
+    {
         let mut deps = Deps::new();
         deps.push("botan", botan_prefix.clone());
         if flavor.needs_json_c() {
@@ -357,6 +374,20 @@ fn cross_toolchain_set() -> bool {
 /// differ from gcc/clang.
 fn target_is_msvc() -> bool {
     env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc")
+}
+
+/// Map a canonical Unix static-archive name to what the staged install
+/// actually contains for the current target: MSVC drops the `lib` prefix
+/// and the `.a` suffix (`librnp.a` → `rnp.lib`; `libz.a` → `z.lib` once
+/// the alias table has run). Idempotency guards check for this name —
+/// checking the Unix name on MSVC would rebuild every dep on every run.
+fn staged_static_marker(unix_archive: &str) -> String {
+    if !target_is_msvc() {
+        return unix_archive.to_string();
+    }
+    let stem = unix_archive.strip_prefix("lib").unwrap_or(unix_archive);
+    let stem = stem.strip_suffix(".a").unwrap_or(stem);
+    format!("{stem}.lib")
 }
 
 /// Stable fingerprint of the librnp cmake configuration. Cache-busting
